@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import "dotenv/config";
 import { PrismaClient, Role } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -5,11 +6,16 @@ import { Pool } from "pg";
 import { hashPassword } from "../src/utils/password";
 
 const connectionString = process.env.DATABASE_URL;
+
 if (!connectionString) {
   throw new Error("DATABASE_URL is required");
 }
 
-const pool = new Pool({ connectionString });
+// FIX: Use the pg adapter and add a 30s timeout to prevent Neon ETIMEDOUT
+const pool = new Pool({ 
+  connectionString,
+  connectionTimeoutMillis: 30000 // 30 seconds to wait for Neon cold starts
+});
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
@@ -49,7 +55,6 @@ const seedUsers: SeedUser[] = [
 
 async function main(): Promise<void> {
   console.log("🌱 Seeding ClientNest Pro database...");
-
   const results: { email: string; role: Role; status: string }[] = [];
 
   for (const user of seedUsers) {

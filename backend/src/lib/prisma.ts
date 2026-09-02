@@ -8,7 +8,11 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function makePrisma(): PrismaClient {
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
+  // FIX: Add the 30-second timeout here too so the server doesn't time out on Neon cold starts
+  const pool = new Pool({ 
+    connectionString: env.DATABASE_URL,
+    connectionTimeoutMillis: 30000 
+  });
   const adapter = new PrismaPg(pool);
 
   if (env.NODE_ENV === "development") {
