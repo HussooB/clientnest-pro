@@ -13,6 +13,12 @@ import leadRoutes from "./routes/lead.routes";
 import productRoutes from "./routes/product.routes";
 import licenseRoutes from "./routes/license.routes";
 
+import invoiceRoutes from "./routes/invoice.routes";
+import paymentRoutes from "./routes/payment.routes";
+import creditNoteRoutes from "./routes/creditNote.routes";
+import reportRoutes from "./routes/report.routes";
+import auditRoutes from "./routes/audit.routes";
+
 const app = express();
 
 app.use(helmet());
@@ -35,6 +41,11 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/licenses", licenseRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/credit-notes", creditNoteRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
