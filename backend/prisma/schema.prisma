@@ -13,6 +13,48 @@ enum Role {
   Sales
 }
 
+enum ClientStatus {
+  Prospect
+  Active
+  OnHold
+  Churned
+}
+
+enum ContactType {
+  Technical
+  Billing
+  Executive
+}
+
+enum LeadStage {
+  New
+  Contacted
+  ProposalSent
+  Negotiation
+  Won
+  Lost
+}
+
+enum LostReason {
+  Price
+  Competitor
+  Timing
+  NoBudget
+  Other
+}
+
+enum LeadSource {
+  Referral
+  Website
+  Outbound
+}
+
+enum LicenseType {
+  Perpetual
+  Subscription
+  Leased
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -24,6 +66,7 @@ model User {
   updatedAt    DateTime   @updatedAt
 
   auditLogs    AuditLog[]
+  clients      Client[]   @relation("AccountOwner")
 }
 
 model AuditLog {
@@ -41,4 +84,73 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model Client {
+  id              String       @id @default(cuid())
+  companyName     String
+  taxId           String?
+  billingAddress  String?
+  industryType    String?
+  status          ClientStatus @default(Prospect)
+  accountOwnerId  String?
+  taxRatePct      Float        @default(0)
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  accountOwner    User?        @relation("AccountOwner", fields: [accountOwnerId], references: [id])
+  contacts        Contact[]
+  licenses        License[]
+
+  @@index([companyName])
+}
+
+model Contact {
+  id         String      @id @default(cuid())
+  name       String
+  email      String?
+  phone      String?
+  contactType ContactType
+  notifyEmail Boolean    @default(true)
+  clientId   String
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id              String      @id @default(cuid())
+  companyName     String
+  contactName     String?
+  email           String?
+  phone           String?
+  source          LeadSource  @default(Website)
+  estimatedValue  Float?
+  stage           LeadStage   @default(New)
+  lostReason      LostReason?
+  convertedClientId String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([companyName])
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  basePrice   Float
+  licenses    License[]
+}
+
+model License {
+  id        String      @id @default(cuid())
+  clientId  String
+  productId String
+  type      LicenseType
+  startDate DateTime
+  endDate   DateTime?
+  seats     Int?
+
+  client    Client  @relation(fields: [clientId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 }
