@@ -8,6 +8,10 @@ import { notFound, errorHandler } from "./middleware/error.middleware";
 import healthRoutes from "./routes/health.routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
+import clientRoutes from "./routes/client.routes";
+import leadRoutes from "./routes/lead.routes";
+import productRoutes from "./routes/product.routes";
+import licenseRoutes from "./routes/license.routes";
 
 const app = express();
 
@@ -27,6 +31,10 @@ if (env.NODE_ENV === "development") {
 app.use("/api", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/clients", clientRoutes);
+app.use("/api/leads", leadRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/licenses", licenseRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
