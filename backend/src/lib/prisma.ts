@@ -8,11 +8,12 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function makePrisma(): PrismaClient {
-  // FIX: Add the 30-second timeout here too so the server doesn't time out on Neon cold starts
+  // ✅ THIS IS THE CORRECT WAY TO SET TIMEOUT FOR NEON
   const pool = new Pool({ 
     connectionString: env.DATABASE_URL,
-    connectionTimeoutMillis: 30000 
+    connectionTimeoutMillis: 30000 // 30 seconds to allow Neon to wake up
   });
+  
   const adapter = new PrismaPg(pool);
 
   if (env.NODE_ENV === "development") {

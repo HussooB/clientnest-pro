@@ -1,81 +1,64 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import api from '@/lib/api';
-import type { User, AuthResponse, ApiResponse } from '@/types';
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import api, { getToken, setToken } from "../lib/api";
+import type { User } from "../types";
 
-interface AuthContextType {
+interface AuthState {
   user: User | null;
-  isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  initializing: boolean;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (token && storedUser) {
-      // Verify token is still valid
-      api
-        .get<ApiResponse<{ user: User }>>('/auth/me')
-        .then((response) => {
-          if (response.data.success && response.data.data) {
-            setUser(response.data.data.user);
-          } else {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            setUser(null);
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setUser(null);
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    let alive = true;
+    (async () => {
+      if (!getToken()) {
+        setInitializing(false);
+        return;
+      }
+      try {
+        // NOTE: no `/api` prefix — baseURL already contains it.
+        const { data } = await api.get<User>("/auth/me");
+        if (alive) setUser(data);
+      } catch {
+        setToken(null);
+      } finally {
+        if (alive) setInitializing(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const response = await api.post<ApiResponse<AuthResponse>>('/auth/login', {
-      email,
-      password,
-    });
+  const login = useCallback(async (email: string, password: string) => {
+    const { data } = await api.post<{ token: string; user: User }>("/auth/login", { email, password });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  }, []);
 
-    if (response.data.success && response.data.data) {
-      const { token, user: userData } = response.data.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-    } else {
-      throw new Error(response.data.message || 'Login failed');
-    }
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const logout = useCallback(() => {
+    setToken(null);
     setUser(null);
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, initializing, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }

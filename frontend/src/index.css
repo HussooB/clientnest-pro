@@ -1,35 +1,128 @@
 @import "tailwindcss";
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
-  --radius: 0.5rem;
+@theme {
+  --font-display: "Bricolage Grotesque", "Instrument Sans", sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-paper: #edf1f1;
+  --color-card: #fbfcfc;
+  --color-ink: #122a30;
+  --color-mute: #5d7378;
+  --color-line: #d7e0e0;
+
+  --color-brand-50: #ecf7f6;
+  --color-brand-100: #d3edeb;
+  --color-brand-200: #a7dad7;
+  --color-brand-300: #71bfbc;
+  --color-brand-400: #3da19f;
+  --color-brand-500: #1b8484;
+  --color-brand-600: #106b6e;
+  --color-brand-700: #0d575b;
+  --color-brand-800: #0c464a;
+  --color-brand-900: #0b3a3e;
+
+  --color-petrol-500: #1d5f68;
+  --color-petrol-600: #17515a;
+  --color-petrol-700: #11424b;
+  --color-petrol-800: #0c353d;
+  --color-petrol-900: #092a31;
+  --color-petrol-950: #061f25;
+
+  --color-gold-300: #f0cd8a;
+  --color-gold-400: #e8b34b;
+  --color-gold-500: #d99a26;
+
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-in: fade-in 0.35s ease both;
+  --animate-pop: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-toast-in: toast-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pulse-soft: pulse-soft 2.2s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-grow-x: grow-x 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-* {
-  border-color: hsl(var(--border));
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+html, body, #root {
+  height: 100%;
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-size: 15px;
+}
+
+::selection {
+  background: var(--color-brand-200);
+  color: var(--color-petrol-900);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b7c6c6 transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #b7c6c6; border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+.tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e3eaea 25%, #f2f6f6 50%, #e3eaea 75%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: 6px;
+}
+
+.sidebar-texture {
+  background-image:
+    radial-gradient(circle at 120% -10%, rgba(79, 179, 174, 0.16), transparent 45%),
+    radial-gradient(circle at -30% 110%, rgba(232, 179, 75, 0.08), transparent 40%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 3px);
+}
+
+.login-texture {
+  background-image:
+    radial-gradient(circle at 85% 8%, rgba(79, 179, 174, 0.22), transparent 42%),
+    radial-gradient(circle at 8% 92%, rgba(232, 179, 75, 0.12), transparent 38%),
+    repeating-radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 14px);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
 }

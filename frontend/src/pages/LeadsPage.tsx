@@ -1,290 +1,371 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
-import type { ApiResponse } from '@/types';
-import { cn } from '@/lib/utils';
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import api from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import { can, fmtDate, fmtMoney0, useDebounced, useUsersQuery } from "../lib/utils";
+import type { Lead, LeadStage, ListResponse, LostReason } from "../types";
+import { CLIENT_STATUSES, HOSTING_CYCLES, INDUSTRIES, LOST_REASONS, SOURCES, STAGES } from "../types";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, type SelectOption } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/context/AuthContext';
-import { Modal } from '@/components/ui/modal';
-import { DollarSign, ArrowRight, Trash, Eye, Edit } from 'lucide-react';
+  apiErrorMsg, Badge, Button, Card, EmptyState, ErrorState, Field, Modal,
+  Pagination, Select, stageTone, Table, TableSkeleton, Td, TextInput, Th, useToast,
+} from "../components/ui";
+import { PageHeader } from "../components/Layout";
+import { IconArrowRight, IconPencil, IconPlus, IconSearch, IconX } from "../components/icons";
 
-type Lead = {
-  id: string;
-  companyName: string;
-  contactName: string;
-  email: string;
-  phone?: string;
-  source: string;
-  estimatedValue: number;
-  stage: string;
-  lostReason?: string;
-  convertedClientId?: string;
-  createdAt: string;
-  updatedAt: string;
-};
+const LIMIT = 10;
 
-type LeadFormValues = {
-  companyName: string;
-  contactName: string;
-  email: string;
-  phone?: string;
-  source: string;
-  estimatedValue: number;
-  stage: string;
-  lostReason?: string;
-};
+// ── Lead form (create / edit) ───────────────────────────────────────────
+const leadSchema = z.object({
+  companyName: z.string().min(2, "Company name is required"),
+  contactName: z.string().min(2, "Contact name is required"),
+  email: z.string().email("Enter a valid email"),
+  phone: z.string().optional().default(""),
+  source: z.string().min(1, "Select a source"),
+  estimatedValue: z.coerce.number().min(0, "Must be ≥ 0"),
+  stage: z.enum(["New", "Contacted", "Proposal", "Negotiation", "Won", "Lost"]),
+  notes: z.string().optional().default(""),
+});
+type LeadForm = z.infer<typeof leadSchema>;
 
-const stageOptions: SelectOption[] = [
-  { value: 'New', label: 'New' },
-  { value: 'Contacted', label: 'Contacted' },
-  { value: 'Proposal', label: 'Proposal' },
-  { value: 'Negotiation', label: 'Negotiation' },
-  { value: 'Won', label: 'Won' },
-  { value: 'Lost', label: 'Lost' },
-];
+function LeadFormModal({ open, onClose, lead }: { open: boolean; onClose: () => void; lead: Lead | null }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<LeadForm>({ resolver: zodResolver(leadSchema) });
 
-const sourceOptions: SelectOption[] = [
-  { value: 'Website', label: 'Website' },
-  { value: 'Referral', label: 'Referral' },
-  { value: 'Cold Call', label: 'Cold Call' },
-  { value: 'Trade Show', label: 'Trade Show' },
-  { value: 'Social', label: 'Social' },
-];
+  useEffect(() => {
+    if (open)
+      reset(lead
+        ? { companyName: lead.companyName, contactName: lead.contactName, email: lead.email, phone: lead.phone, source: lead.source, estimatedValue: lead.estimatedValue, stage: lead.stage, notes: lead.notes ?? "" }
+        : { companyName: "", contactName: "", email: "", phone: "", source: "Website", estimatedValue: 10000, stage: "New", notes: "" });
+  }, [open, lead, reset]);
 
-function stageColor(stage: string) {
-  switch (stage) {
-    case 'Won': return 'bg-green-100 text-green-800';
-    case 'Lost': return 'bg-red-100 text-red-800';
-    case 'Negotiation': return 'bg-orange-100 text-orange-800';
-    case 'Proposal': return 'bg-yellow-100 text-yellow-800';
-    case 'Contacted': return 'bg-blue-100 text-blue-800';
-    case 'New': return 'bg-zinc-100 text-zinc-800';
-    default: return 'bg-zinc-100 text-zinc-800';
-  }
-}
-
-export function LeadsPage() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-
-  // Fetch leads
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery<{ leads: Lead[] }>({
-    queryKey: ['leads'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<{ leads: Lead[] }>>('/leads');
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.message || 'Failed to fetch leads');
-      }
-      return response.data.data;
-    },
-    staleTime: 30000,
-  });
-
-  // Create lead mutation
-  const createMutation = useMutation({
-    mutationFn: async (variables: LeadFormValues) => {
-      const response = await api.post<ApiResponse<Lead>>('/leads', variables);
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to create lead');
-      }
-      return response.data.data;
-    },
+  const mutation = useMutation({
+    mutationFn: (form: LeadForm) =>
+      lead ? api.put(`/leads/${lead.id}`, form) : api.post("/leads", form),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      void qc.invalidateQueries({ queryKey: ["leads"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      toast.push("success", lead ? "Lead updated" : "Lead created", lead?.companyName);
+      onClose();
     },
+    onError: (e) => toast.push("error", "Save failed", apiErrorMsg(e)),
   });
-
-  // Update lead mutation
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, variables }: { id: string; variables: LeadFormValues }) => {
-      const response = await api.patch<ApiResponse<Lead>>(`/leads/${id}`, variables);
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to update lead');
-      }
-      return response.data.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-    },
-  });
-
-  // Convert lead mutation
-  const convertMutation = useMutation({
-    mutationFn: async (leadId: string) => {
-      const response = await api.post<ApiResponse<Lead>>(`/leads/${leadId}/convert`);
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to convert lead');
-      }
-      return response.data.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-    },
-  });
-
-  // Mark lost mutation
-  const markLostMutation = useMutation({
-    mutationFn: async ({ leadId, reason }: { leadId: string; reason: string }) => {
-      const response = await api.post<ApiResponse<Lead>>(`/leads/lost`, { lostReason: reason });
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to mark lead as lost');
-      }
-      return response.data.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-    },
-  });
-
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-md bg-red-50 p-4 text-red-900">
-        Error loading leads: {error instanceof Error ? error.message : 'Unknown error'}
-      </div>
-    );
-  }
-
-  // Check permissions
-  const canManageLeads = user?.role === 'Admin' || user?.role === 'Sales';
-  const canConvert = user?.role === 'Admin' || user?.role === 'Sales';
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900">Leads</h1>
+    <Modal open={open} onClose={onClose} title={lead ? `Edit lead — ${lead.companyName}` : "New lead"} sub="Module A · lead & opportunity capture"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
+            {lead ? "Save changes" : "Create lead"}
+          </Button>
+        </>
+      }>
+      <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
+        <Field label="Company" required error={errors.companyName?.message}>
+          <TextInput error={!!errors.companyName} placeholder="Acme Industries" {...register("companyName")} />
+        </Field>
+        <Field label="Contact person" required error={errors.contactName?.message}>
+          <TextInput error={!!errors.contactName} placeholder="Jane Doe" {...register("contactName")} />
+        </Field>
+        <Field label="Email" required error={errors.email?.message}>
+          <TextInput error={!!errors.email} type="email" placeholder="jane@acme.com" {...register("email")} />
+        </Field>
+        <Field label="Phone" error={errors.phone?.message}>
+          <TextInput placeholder="+1 555 010 2299" {...register("phone")} />
+        </Field>
+        <Field label="Source" required error={errors.source?.message}>
+          <Select error={!!errors.source} {...register("source")}>
+            {SOURCES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </Field>
+        <Field label="Est. value (USD)" required error={errors.estimatedValue?.message}>
+          <TextInput error={!!errors.estimatedValue} type="number" min={0} step="100" {...register("estimatedValue")} />
+        </Field>
+        <Field label="Stage" required error={errors.stage?.message}>
+          <Select error={!!errors.stage} {...register("stage")}>
+            {STAGES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </Field>
+        <div className="col-span-2">
+          <Field label="Notes">
+            <TextInput placeholder="Context, next steps…" {...register("notes")} />
+          </Field>
+        </div>
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
+  );
+}
+
+// ── Convert to client (SRS A: conversion) ───────────────────────────────
+const convertSchema = z.object({
+  companyName: z.string().min(2),
+  taxId: z.string().optional().default(""),
+  billingAddress: z.string().optional().default(""),
+  industryType: z.string().min(1),
+  accountOwnerId: z.string().min(1),
+  taxRatePct: z.coerce.number().min(0).max(100),
+  hostingFeeAmount: z.coerce.number().min(0),
+  hostingCycle: z.enum(["Monthly", "Quarterly", "Annual"]),
+  status: z.enum(["Prospect", "Active", "OnHold", "Churned"]),
+});
+type ConvertForm = z.infer<typeof convertSchema>;
+
+function ConvertModal({ open, onClose, lead }: { open: boolean; onClose: () => void; lead: Lead | null }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const usersQ = useUsersQuery(open);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<ConvertForm>({ resolver: zodResolver(convertSchema) });
+
+  useEffect(() => {
+    if (open && lead)
+      reset({
+        companyName: lead.companyName, taxId: "", billingAddress: "", industryType: "Other",
+        accountOwnerId: user?.id ?? "", taxRatePct: 15, hostingFeeAmount: 0, hostingCycle: "Monthly", status: "Active",
+      });
+  }, [open, lead, reset, user]);
+
+  const mutation = useMutation({
+    mutationFn: (form: ConvertForm) => api.post(`/leads/${lead!.id}/convert`, form),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ["leads"] });
+      void qc.invalidateQueries({ queryKey: ["clients"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      toast.push("success", "Lead converted to client", lead?.companyName);
+      onClose();
+      navigate(`/clients/${res.data.client.id}`);
+    },
+    onError: (e) => toast.push("error", "Conversion failed", apiErrorMsg(e)),
+  });
+
+  if (!lead) return null;
+  return (
+    <Modal open={open} onClose={onClose} title="Convert lead to client" sub={`${lead.companyName} · ${lead.contactName} will become the primary contact`} width="max-w-xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="gold" loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
+            <IconArrowRight width={15} height={15} /> Convert to client
+          </Button>
+        </>
+      }>
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2.5 text-[12.5px] font-semibold text-brand-900">
+        <Badge tone={stageTone(lead.stage)}>{lead.stage}</Badge>
+        Est. value {fmtMoney0(lead.estimatedValue)} · Source {lead.source} · {lead.email}
       </div>
+      <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
+        <Field label="Company name" required error={errors.companyName?.message}>
+          <TextInput error={!!errors.companyName} {...register("companyName")} />
+        </Field>
+        <Field label="Tax ID" error={errors.taxId?.message}>
+          <TextInput placeholder="TX-00000000" {...register("taxId")} />
+        </Field>
+        <div className="col-span-2">
+          <Field label="Billing address" error={errors.billingAddress?.message}>
+            <TextInput placeholder="Street, city" {...register("billingAddress")} />
+          </Field>
+        </div>
+        <Field label="Industry" required error={errors.industryType?.message}>
+          <Select {...register("industryType")}>
+            {INDUSTRIES.map((i) => <option key={i}>{i}</option>)}
+          </Select>
+        </Field>
+        <Field label="Account owner" required error={errors.accountOwnerId?.message}>
+          <Select error={!!errors.accountOwnerId} {...register("accountOwnerId")}>
+            {(usersQ.data ?? []).filter((u) => u.isActive).map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
+          </Select>
+        </Field>
+        <Field label="Tax rate %" error={errors.taxRatePct?.message}>
+          <TextInput type="number" min={0} max={100} step="0.5" {...register("taxRatePct")} />
+        </Field>
+        <Field label="Status" required>
+          <Select {...register("status")}>
+            {CLIENT_STATUSES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </Field>
+        <Field label="Hosting fee" hint="0 if none" error={errors.hostingFeeAmount?.message}>
+          <TextInput type="number" min={0} step="10" {...register("hostingFeeAmount")} />
+        </Field>
+        <Field label="Hosting cycle">
+          <Select {...register("hostingCycle")}>
+            {HOSTING_CYCLES.map((c) => <option key={c}>{c}</option>)}
+          </Select>
+        </Field>
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
+  );
+}
 
-      {/* Table */}
-      {data?.leads.map((lead) => (
-        <Card key={lead.id} className={cn('shadow-sm border-b border-zinc-200 overflow-hidden', {})}>
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-zinc-500 text-sm">Company</p>
-                <p className="font-medium">{lead.companyName}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Contact</p>
-                <p className="font-medium">{lead.contactName}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Email</p>
-                <p className="font-medium text-zinc-400">{lead.email}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Est. Value</p>
-                <p className="font-medium">${lead.estimatedValue.toLocaleString()}</p>
-              </div>
-            </div>
+// ── Mark lost (SRS A: lost reasons) ─────────────────────────────────────
+function LostModal({ open, onClose, lead }: { open: boolean; onClose: () => void; lead: Lead | null }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [reason, setReason] = useState<LostReason | null>(null);
 
-            <div className="mt-3 pt-3 border-t border-zinc-100">
-              <p className="text-zinc-500 text-sm">Stage</p>
-              <span className={cn('px-2 py-1 rounded text-xs font-medium', stageColor(lead.stage))}>
-                {lead.stage}
-              </span>
-            </div>
+  useEffect(() => { if (open) setReason(null); }, [open]);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/leads/${lead!.id}/lost`, { lostReason: reason }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["leads"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      toast.push("info", "Lead marked as lost", `${lead?.companyName} — ${reason}`);
+      onClose();
+    },
+    onError: (e) => toast.push("error", "Could not mark lost", apiErrorMsg(e)),
+  });
+
+  if (!lead) return null;
+  return (
+    <Modal open={open} onClose={onClose} title="Mark lead as lost" sub={`${lead.companyName} · a lost reason is required (SRS A.4)`} width="max-w-md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="danger" disabled={!reason} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            <IconX width={14} height={14} /> Mark lost
+          </Button>
+        </>
+      }>
+      <div className="grid grid-cols-2 gap-2">
+        {LOST_REASONS.map((r) => (
+          <button key={r} type="button" onClick={() => setReason(r)}
+            className={`rounded-lg border px-3 py-2.5 text-left text-[13.5px] font-semibold transition-all duration-150 active:scale-[0.98] ${
+              reason === r ? "border-rose-500 bg-rose-600/10 text-rose-800 ring-2 ring-rose-200" : "border-line bg-card text-ink hover:border-rose-300"
+            }`}>
+            {r}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Page ────────────────────────────────────────────────────────────────
+export default function LeadsPage() {
+  const { user } = useAuth();
+  const manage = can(user?.role, "leads.manage");
+
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [stage, setStage] = useState("");
+  const [source, setSource] = useState("");
+  const debouncedSearch = useDebounced(search, 300);
+
+  const [formLead, setFormLead] = useState<Lead | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [convertLead, setConvertLead] = useState<Lead | null>(null);
+  const [lostLead, setLostLead] = useState<Lead | null>(null);
+
+  useEffect(() => setPage(1), [debouncedSearch, stage, source]);
+
+  const leadsQ = useQuery({
+    queryKey: ["leads", page, debouncedSearch, stage, source],
+    queryFn: async () =>
+      (await api.get<ListResponse<Lead>>("/leads", {
+        params: { page, limit: LIMIT, search: debouncedSearch || undefined, stage: stage || undefined, source: source || undefined },
+      })).data,
+    placeholderData: (prev) => prev,
+  });
+
+  const rows = leadsQ.data?.data ?? [];
+  const total = leadsQ.data?.total ?? 0;
+
+  return (
+    <div>
+      <PageHeader
+        title="Leads & Opportunities"
+        desc="Module A — capture, qualify and convert. Won leads become clients; lost leads keep a reason for win/loss analysis."
+        actions={manage && (
+          <Button onClick={() => { setFormLead(null); setFormOpen(true); }}>
+            <IconPlus width={15} height={15} /> New lead
+          </Button>
+        )}
+      />
+
+      <Card pad={false} className="animate-fade-up">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line/70 px-4 py-3">
+          <div className="relative min-w-[220px] flex-1">
+            <IconSearch width={15} height={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
+            <TextInput placeholder="Search company, contact or email…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-        </Card>
-      ))}
+          <Select value={stage} onChange={(e) => setStage(e.target.value)} className="w-[150px]">
+            <option value="">All stages</option>
+            {STAGES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+          <Select value={source} onChange={(e) => setSource(e.target.value)} className="w-[150px]">
+            <option value="">All sources</option>
+            {SOURCES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </div>
 
-      {/* Create Lead Modal */}
-      {canManageLeads && (
-        <Modal
-          open={false}
-          onClose={() => {}}
-          title="Create New Lead"
-        >
-          <form
-            className="space-y-4 p-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const formData = new FormData((e.target as HTMLFormElement));
-              const variables: LeadFormValues = {
-                companyName: formData.get('companyName') as string,
-                contactName: formData.get('contactName') as string,
-                email: formData.get('email') as string,
-                phone: formData.get('phone') as string || undefined,
-                source: formData.get('source') as string,
-                estimatedValue: Number(formData.get('estimatedValue')),
-                stage: formData.get('stage') as string,
-                lostReason: undefined,
-              };
-              try {
-                await createMutation.mutateAsync(variables);
-              } catch (err) {
-                console.error('Error creating lead:', err);
-              }
-            }}
-          >
-            <Input
-              id="companyName"
-              name="companyName"
-              placeholder="Company name"
-              required
-            />
-            <Input
-              id="contactName"
-              name="contactName"
-              placeholder="Contact name"
-              required
-            />
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Email"
-              required
-            />
-            <Input
-              id="phone"
-              name="phone"
-              placeholder="Phone"
-            />
-            <Select
-              options={sourceOptions}
-            />
-            <Select
-              options={stageOptions}
-            />
-            <Input
-              id="estimatedValue"
-              name="estimatedValue"
-              type="number"
-              placeholder="Estimated value"
-              required
-            />
-            <div>
-              <Button type="submit">Create Lead</Button>
-              <Button onClick={() => {}}>Cancel</Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+        {leadsQ.isError ? (
+          <ErrorState message={apiErrorMsg(leadsQ.error)} onRetry={() => leadsQ.refetch()} />
+        ) : leadsQ.isPending ? (
+          <TableSkeleton cols={7} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="No leads match" hint="Adjust the filters or capture a new opportunity."
+            action={manage ? <Button size="sm" onClick={() => { setFormLead(null); setFormOpen(true); }}><IconPlus width={14} height={14} /> New lead</Button> : undefined} />
+        ) : (
+          <Table
+            head={
+              <>
+                <Th>Company</Th><Th>Contact</Th><Th>Source</Th>
+                <Th className="text-right">Est. value</Th><Th>Stage</Th><Th>Created</Th>
+                {manage && <Th className="text-right">Actions</Th>}
+              </>
+            }>
+            {rows.map((lead) => (
+              <tr key={lead.id} className="group transition-colors hover:bg-brand-50/40">
+                <Td>
+                  <p className="font-bold">{lead.companyName}</p>
+                  {lead.lostReason && <p className="text-[11.5px] text-mute">Lost: {lead.lostReason}</p>}
+                </Td>
+                <Td>
+                  <p className="font-medium">{lead.contactName}</p>
+                  <p className="text-[12px] text-mute">{lead.email}</p>
+                </Td>
+                <Td><Badge tone="slate">{lead.source}</Badge></Td>
+                <Td className="text-right"><span className="tnum font-mono font-semibold">{fmtMoney0(lead.estimatedValue)}</span></Td>
+                <Td><Badge tone={stageTone(lead.stage)} dot>{lead.stage}</Badge></Td>
+                <Td className="text-mute">{fmtDate(lead.createdAt)}</Td>
+                {manage && (
+                  <Td className="text-right">
+                    <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      {can(user?.role, "leads.convert") && lead.stage !== "Won" && lead.stage !== "Lost" && (
+                        <Button variant="subtle" size="xs" title="Convert to client" onClick={() => setConvertLead(lead)}>
+                          <IconArrowRight width={13} height={13} /> Convert
+                        </Button>
+                      )}
+                      {lead.stage !== "Lost" && lead.stage !== "Won" && (
+                        <Button variant="ghost" size="xs" title="Mark lost" onClick={() => setLostLead(lead)}>
+                          <IconX width={13} height={13} />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="xs" title="Edit lead" onClick={() => { setFormLead(lead); setFormOpen(true); }}>
+                        <IconPencil width={13} height={13} />
+                      </Button>
+                    </div>
+                  </Td>
+                )}
+              </tr>
+            ))}
+          </Table>
+        )}
+
+        {!leadsQ.isPending && total > 0 && <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />}
+      </Card>
+
+      <LeadFormModal open={formOpen} onClose={() => setFormOpen(false)} lead={formLead} />
+      <ConvertModal open={!!convertLead} onClose={() => setConvertLead(null)} lead={convertLead} />
+      <LostModal open={!!lostLead} onClose={() => setLostLead(null)} lead={lostLead} />
     </div>
   );
 }

@@ -1,146 +1,204 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
-import type { User, ApiResponse } from '@/types';
-import { cn } from '@/lib/utils';
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import api from "../lib/api";
+import { fmtDate, initials } from "../lib/utils";
+import type { ListResponse, User } from "../types";
+import { ROLES } from "../types";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, type SelectOption } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/context/AuthContext';
-import { Modal } from '@/components/ui/modal';
-import { UserPlus, Users, Trash, Eye, Edit, } from 'lucide-react';
+  apiErrorMsg, Badge, Button, Card, Checkbox, ConfirmModal, EmptyState, ErrorState, Field, Modal,
+  Pagination, roleTone, Select, Table, TableSkeleton, Td, TextInput, Th, useToast,
+} from "../components/ui";
+import { PageHeader } from "../components/Layout";
+import { IconPencil, IconPlus, IconRefresh } from "../components/icons";
 
-type UserFormValues = {
-  name: string;
-  email: string;
-  password?: string;
-  role: 'Admin' | 'Finance' | 'Support' | 'Sales';
-  active: boolean;
-};
+const LIMIT = 10;
 
-const roleOptions: SelectOption[] = [
-  { value: 'Admin', label: 'Admin' },
-  { value: 'Finance', label: 'Finance' },
-  { value: 'Support', label: 'Support' },
-  { value: 'Sales', label: 'Sales' },
-];
+const createSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Enter a valid email"),
+  password: z.string().min(6, "Minimum 6 characters"),
+  role: z.enum(["Admin", "Finance", "Support", "Sales"]),
+  isActive: z.boolean(),
+});
+type CreateForm = z.infer<typeof createSchema>;
 
-export function UsersPage() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
+const editSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Enter a valid email"),
+  role: z.enum(["Admin", "Finance", "Support", "Sales"]),
+  isActive: z.boolean(),
+  password: z.string().optional().or(z.literal("")),
+}).refine((v) => !v.password || v.password.length >= 6, { message: "Minimum 6 characters", path: ["password"] });
+type EditForm = z.infer<typeof editSchema>;
 
-  // Check admin permission
-  const isAdmin = user?.role === 'Admin';
-
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <div className="rounded-md bg-zinc-50 p-4 text-zinc-600">
-          <p>Access denied. Admin role required.</p>
-          <Button onClick={() => window.history.back()}>Back to Dashboard</Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Fetch users
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery<{ users: User[] }>({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<{ users: User[] }>>('/users');
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.message || 'Failed to fetch users');
-      }
-      return response.data.data;
-    },
-    staleTime: 30000,
+function UserFormModal({ open, onClose, target }: { open: boolean; onClose: () => void; target: User | null }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<CreateForm & EditForm>({
+    resolver: zodResolver((target ? editSchema : createSchema) as z.ZodTypeAny),
   });
+  const active = watch("isActive");
 
-  // Create user mutation
-  const createMutation = useMutation({
-    mutationFn: async (variables: UserFormValues) => {
-      const response = await api.post<ApiResponse<User>>('/users', variables);
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to create user');
-      }
-      return response.data.data;
+  useEffect(() => {
+    if (!open) return;
+    reset(target
+      ? { name: target.name, email: target.email, password: "", role: target.role, isActive: target.isActive }
+      : { name: "", email: "", password: "", role: "Support", isActive: true });
+  }, [open, target, reset]);
+
+  const mutation = useMutation({
+    mutationFn: (form: CreateForm & EditForm) => {
+      const payload = target
+        ? { name: form.name, email: form.email, role: form.role, isActive: form.isActive, password: form.password || undefined }
+        : form;
+      return target ? api.put(`/users/${target.id}`, payload) : api.post("/users", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["users-all"] });
+      toast.push("success", target ? "User updated" : "User created", target?.name);
+      onClose();
     },
+    onError: (e) => toast.push("error", "Save failed", apiErrorMsg(e)),
   });
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+  return (
+    <Modal open={open} onClose={onClose} title={target ? `Edit — ${target.name}` : "New user"} sub="Module I · role-based access control"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
+            {target ? "Save changes" : "Create user"}
+          </Button>
+        </>
+      }>
+      <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
+        <Field label="Full name" required error={errors.name?.message}>
+          <TextInput error={!!errors.name} placeholder="Jane Doe" {...register("name")} />
+        </Field>
+        <Field label="Email" required error={errors.email?.message}>
+          <TextInput error={!!errors.email} type="email" placeholder="jane@company.com" {...register("email")} />
+        </Field>
+        <Field label="Role" required error={errors.role?.message}>
+          <Select {...register("role")}>
+            {ROLES.map((r) => <option key={r}>{r}</option>)}
+          </Select>
+        </Field>
+        <Field label={target ? "Reset password" : "Password"} required={!target} hint={target ? "leave blank to keep current" : undefined} error={errors.password?.message}>
+          <TextInput error={!!errors.password} type="password" autoComplete="new-password" placeholder="••••••••" {...register("password")} />
+        </Field>
+        <div className="col-span-2">
+          <Checkbox label="Account active (can sign in)" checked={!!active} onChange={(v) => setValue("isActive", v)} />
+          <input type="hidden" {...register("isActive")} />
         </div>
-      </div>
-    );
-  }
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
+  );
+}
 
-  if (error) {
-    return (
-      <div className="rounded-md bg-red-50 p-4 text-red-900">
-        Error loading users: {error instanceof Error ? error.message : 'Unknown error'}
-      </div>
-    );
-  }
+export default function UsersPage() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [formTarget, setFormTarget] = useState<User | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [toggleTarget, setToggleTarget] = useState<User | null>(null);
+
+  const usersQ = useQuery({
+    queryKey: ["users", page],
+    queryFn: async () => (await api.get<ListResponse<User>>("/users", { params: { page, limit: LIMIT } })).data,
+    placeholderData: (prev) => prev,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (u: User) => api.put(`/users/${u.id}`, { isActive: !u.isActive }),
+    onSuccess: (_res, u) => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["users-all"] });
+      toast.push("success", u.isActive ? "User deactivated" : "User activated", u.name);
+      setToggleTarget(null);
+    },
+    onError: (e) => toast.push("error", "Update failed", apiErrorMsg(e)),
+  });
+
+  const rows = usersQ.data?.data ?? [];
+  const total = usersQ.data?.total ?? 0;
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900">Users</h1>
-      </div>
+    <div>
+      <PageHeader
+        title="User Management"
+        desc="Module I — provision accounts, assign roles (Admin · Finance · Support · Sales) and control activation."
+        actions={
+          <Button onClick={() => { setFormTarget(null); setFormOpen(true); }}>
+            <IconPlus width={15} height={15} /> New user
+          </Button>
+        }
+      />
 
-      {/* Action */}
-      <div className="mb-4">
-        <Button>Create User</Button>
-      </div>
+      <Card pad={false} className="animate-fade-up">
+        {usersQ.isError ? (
+          <ErrorState message={apiErrorMsg(usersQ.error)} onRetry={() => usersQ.refetch()} />
+        ) : usersQ.isPending ? (
+          <TableSkeleton cols={5} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="No users" hint="Create the first account to get started." />
+        ) : (
+          <Table minWidth="min-w-[760px]"
+            head={<><Th>User</Th><Th>Email</Th><Th>Role</Th><Th>Status</Th><Th>Created</Th><Th className="text-right">Actions</Th></>}>
+            {rows.map((u) => (
+              <tr key={u.id} className="group transition-colors hover:bg-brand-50/40">
+                <Td>
+                  <div className="flex items-center gap-3">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-[12px] font-bold ${u.isActive ? "bg-brand-700 text-brand-50" : "bg-slate-300 text-slate-700"}`}>
+                      {initials(u.name)}
+                    </span>
+                    <span className="font-bold">{u.name}</span>
+                  </div>
+                </Td>
+                <Td className="font-mono text-[12.5px] text-mute">{u.email}</Td>
+                <Td><Badge tone={roleTone(u.role)}>{u.role}</Badge></Td>
+                <Td>
+                  {u.isActive
+                    ? <Badge tone="green" dot>Active</Badge>
+                    : <Badge tone="slate">Inactive</Badge>}
+                </Td>
+                <Td className="text-mute">{fmtDate(u.createdAt)}</Td>
+                <Td className="text-right">
+                  <div className="flex justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <Button variant="ghost" size="xs" onClick={() => { setFormTarget(u); setFormOpen(true); }}>
+                      <IconPencil width={13} height={13} /> Edit
+                    </Button>
+                    <Button variant={u.isActive ? "ghost" : "subtle"} size="xs" className={u.isActive ? "hover:text-rose-700" : ""} onClick={() => setToggleTarget(u)}>
+                      <IconRefresh width={13} height={13} /> {u.isActive ? "Deactivate" : "Activate"}
+                    </Button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        )}
 
-      {/* Table */}
-      {data?.users.map((user) => (
-        <Card key={user.id} className="shadow-sm border-b border-zinc-200 overflow-hidden">
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-zinc-500 text-sm">Name</p>
-                <p className="font-medium">{user.name}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Email</p>
-                <p className="font-medium text-zinc-400">{user.email}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Role</p>
-                <Badge variant="secondary">{user.role}</Badge>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Status</p>
-                <Badge
-                  variant={user.isActive ? 'default' : 'destructive'}
-                >
-                  {user.isActive ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </Card>
-      ))}
+        {!usersQ.isPending && total > 0 && <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />}
+      </Card>
+
+      <UserFormModal open={formOpen} onClose={() => setFormOpen(false)} target={formTarget} />
+      <ConfirmModal
+        open={!!toggleTarget}
+        onClose={() => setToggleTarget(null)}
+        title={toggleTarget?.isActive ? "Deactivate user?" : "Activate user?"}
+        confirmLabel={toggleTarget?.isActive ? "Deactivate" : "Activate"}
+        tone={toggleTarget?.isActive ? "danger" : "primary"}
+        loading={toggleMutation.isPending}
+        onConfirm={() => toggleTarget && toggleMutation.mutate(toggleTarget)}
+        body={toggleTarget?.isActive
+          ? <><strong>{toggleTarget?.name}</strong> will immediately lose access. Their historical actions remain in the audit trail.</>
+          : <><strong>{toggleTarget?.name}</strong> will regain access with the <strong>{toggleTarget?.role}</strong> role.</>}
+      />
     </div>
   );
 }

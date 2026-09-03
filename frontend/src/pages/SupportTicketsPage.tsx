@@ -1,178 +1,224 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
-import type { User, ApiResponse } from '@/types';
-import { cn } from '@/lib/utils';
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import api from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import { can, fmtDateTime, fmtMinutes, timeAgo, useClientsOptions, useDebounced, useUsersQuery } from "../lib/utils";
+import type { ListResponse, TicketRow } from "../types";
+import { TICKET_PRIORITIES, TICKET_STATUSES } from "../types";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, type SelectOption } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/context/AuthContext';
-import { Modal } from '@/components/ui/modal';
-import { Clock, Trash, Eye, } from 'lucide-react';
+  apiErrorMsg, Badge, Button, Card, EmptyState, ErrorState, Field, Modal, Pagination, priorityTone,
+  Select, Table, TableSkeleton, Td, Textarea, TextInput, Th, ticketTone, useToast,
+} from "../components/ui";
+import { PageHeader } from "../components/Layout";
+import { IconEye, IconPencil, IconPlus, IconSearch } from "../components/icons";
 
-type Ticket = {
-  id: string;
-  subject: string;
-  clientId: string;
-  priority: 'Low' | 'Medium' | 'High' | 'Critical';
-  status: 'Open' | 'In Progress' | 'Resolved' | 'Closed';
-  assignedTo?: string;
-  createdAt: string;
-  updatedAt: string;
-  timeSpent: number;
-};
+const LIMIT = 10;
 
-type TicketFormValues = {
-  subject: string;
-  clientId: string;
-  priority: string;
-  status: string;
-};
+const ticketSchema = z.object({
+  clientId: z.string().min(1, "Select a client"),
+  subject: z.string().min(5, "Subject is required (min 5 characters)"),
+  description: z.string().min(10, "Describe the issue (min 10 characters)"),
+  priority: z.enum(["Low", "Medium", "High", "Critical"]),
+  status: z.enum(["Open", "In Progress", "Resolved", "Closed"]),
+  assignedToId: z.string().optional().default(""),
+});
+type TicketForm = z.infer<typeof ticketSchema>;
 
-const priorityOptions: SelectOption[] = [
-  { value: 'Low', label: 'Low' },
-  { value: 'Medium', label: 'Medium' },
-  { value: 'High', label: 'High' },
-  { value: 'Critical', label: 'Critical' },
-];
+export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onClose: () => void; ticket: TicketRow | null }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const clientsQ = useClientsOptions();
+  const usersQ = useUsersQuery(open);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<TicketForm>({ resolver: zodResolver(ticketSchema) });
 
-const statusOptions: SelectOption[] = [
-  { value: 'Open', label: 'Open' },
-  { value: 'In Progress', label: 'In Progress' },
-  { value: 'Resolved', label: 'Resolved' },
-  { value: 'Closed', label: 'Closed' },
-];
+  useEffect(() => {
+    if (!open) return;
+    reset(ticket
+      ? { clientId: ticket.clientId, subject: ticket.subject, description: ticket.description, priority: ticket.priority, status: ticket.status, assignedToId: ticket.assignedToId ?? "" }
+      : { clientId: "", subject: "", description: "", priority: "Medium", status: "Open", assignedToId: "" });
+  }, [open, ticket, reset]);
 
-function priorityColor(priority: string) {
-  switch (priority) {
-    case 'Low': return 'bg-zinc-100 text-zinc-800';
-    case 'Medium': return 'bg-blue-100 text-blue-800';
-    case 'High': return 'bg-orange-100 text-orange-800';
-    case 'Critical': return 'bg-red-100 text-red-800';
-    default: return 'bg-zinc-100 text-zinc-800';
-  }
-}
-
-export function SupportTicketsPage() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-
-  // Fetch tickets
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery<{ tickets: Ticket[] }>({
-    queryKey: ['tickets'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<{ tickets: Ticket[] }>>('/tickets');
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.message || 'Failed to fetch tickets');
-      }
-      return response.data.data;
-    },
-    staleTime: 30000,
-  });
-
-  // Create ticket mutation
-  const createMutation = useMutation({
-    mutationFn: async (variables: TicketFormValues) => {
-      const response = await api.post<ApiResponse<Ticket>>('/tickets', variables);
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to create ticket');
-      }
-      return response.data.data;
-    },
+  const mutation = useMutation({
+    mutationFn: (form: TicketForm) => (ticket ? api.put(`/tickets/${ticket.id}`, form) : api.post("/tickets", form)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      void qc.invalidateQueries({ queryKey: ["tickets"] });
+      void qc.invalidateQueries({ queryKey: ["ticket"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      toast.push("success", ticket ? "Ticket updated" : "Ticket created", ticket?.ref);
+      onClose();
     },
+    onError: (e) => toast.push("error", "Save failed", apiErrorMsg(e)),
   });
-
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-md bg-red-50 p-4 text-red-900">
-        Error loading tickets: {error instanceof Error ? error.message : 'Unknown error'}
-      </div>
-    );
-  }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-zinc-900">Support Tickets</h1>
-      </div>
+    <Modal open={open} onClose={onClose} title={ticket ? `Edit ${ticket.ref}` : "New support ticket"} sub="Module F · SLA clock starts at creation (SRS F.5)" width="max-w-xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
+            {ticket ? "Save changes" : "Create ticket"}
+          </Button>
+        </>
+      }>
+      <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
+        <Field label="Client" required error={errors.clientId?.message}>
+          <Select error={!!errors.clientId} {...register("clientId")}>
+            <option value="">Select client…</option>
+            {(clientsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+          </Select>
+        </Field>
+        <Field label="Assigned to">
+          <Select {...register("assignedToId")}>
+            <option value="">Unassigned</option>
+            {(usersQ.data ?? []).filter((u) => u.isActive).map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
+          </Select>
+        </Field>
+        <div className="col-span-2">
+          <Field label="Subject" required error={errors.subject?.message}>
+            <TextInput error={!!errors.subject} placeholder="Short summary of the issue" {...register("subject")} />
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="Description" required error={errors.description?.message}>
+            <Textarea error={!!errors.description} placeholder="Steps to reproduce, impact, environment…" {...register("description")} />
+          </Field>
+        </div>
+        <Field label="Priority" required>
+          <Select {...register("priority")}>
+            {TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+          </Select>
+        </Field>
+        <Field label="Status" required>
+          <Select {...register("status")}>
+            {TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+        </Field>
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
+  );
+}
 
- {/* Filters */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <Select
-          options={priorityOptions}
-        />
-        <Select
-          options={statusOptions}
-        />
-      </div>
+export default function SupportTicketsPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const manage = can(user?.role, "tickets.manage");
 
-      {/* Table */}
-      {data?.tickets.map((ticket) => (
-        <Card key={ticket.id} className="shadow-sm border-b border-zinc-200 overflow-hidden">
-          <div className="p-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-zinc-500 text-sm">Subject</p>
-                <p className="font-medium truncate">{ticket.subject}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Priority</p>
-                <span className={cn('px-2 py-1 rounded text-xs font-medium', priorityColor(ticket.priority))}>
-                  {ticket.priority}
-                </span>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-sm">Status</p>
-                <span className="px-2 py-1 rounded text-xs font-medium">
-                  {ticket.status}
-                </span>
-              </div>
-            </div>
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [priority, setPriority] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const debouncedSearch = useDebounced(search, 300);
 
-            <div className="mt-3 pt-3 border-t border-zinc-100">
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <p className="text-zinc-500 text-sm">Client</p>
-                  <p className="text-zinc-500 text-sm">Assigned</p>
-                </div>
-                <div>
-                  <p className="text-zinc-500 text-sm">Time Spent</p>
-                  <p className="font-medium">{ticket.timeSpent} min</p>
-                </div>
-                <div>
-                  <p className="text-zinc-500 text-sm">Created</p>
-                  <p className="text-zinc-400">{new Date(ticket.createdAt).toLocaleDateString()}</p>
-                </div>
-              </div>
-            </div>
+  const [formTicket, setFormTicket] = useState<TicketRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+
+  useEffect(() => setPage(1), [debouncedSearch, status, priority, clientId, assignedTo]);
+
+  const clientsQ = useClientsOptions();
+  const usersQ = useUsersQuery();
+
+  const ticketsQ = useQuery({
+    queryKey: ["tickets", page, debouncedSearch, status, priority, clientId, assignedTo],
+    queryFn: async () =>
+      (await api.get<ListResponse<TicketRow>>("/tickets", {
+        params: {
+          page, limit: LIMIT, status: status || undefined, priority: priority || undefined,
+          clientId: clientId || undefined, assignedTo: assignedTo || undefined, search: debouncedSearch || undefined,
+        },
+      })).data,
+    placeholderData: (prev) => prev,
+  });
+
+  const rows = ticketsQ.data?.data ?? [];
+  const total = ticketsQ.data?.total ?? 0;
+
+  return (
+    <div>
+      <PageHeader
+        title="Support Tickets"
+        desc="Module F — SLA-bound ticket queue with time tracking. Critical: 2h first response / 8h resolution."
+        actions={manage && (
+          <Button onClick={() => { setFormTicket(null); setFormOpen(true); }}>
+            <IconPlus width={15} height={15} /> New ticket
+          </Button>
+        )}
+      />
+
+      <Card pad={false} className="animate-fade-up">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line/70 px-4 py-3">
+          <div className="relative min-w-[200px] flex-1">
+            <IconSearch width={15} height={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-mute" />
+            <TextInput placeholder="Search subject or ref (TK-…)…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-        </Card>
-      ))}
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-[140px]">
+            <option value="">All statuses</option>
+            {TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}
+          </Select>
+          <Select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-[140px]">
+            <option value="">All priorities</option>
+            {TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+          </Select>
+          <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-[180px]">
+            <option value="">All clients</option>
+            {(clientsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+          </Select>
+          <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-[160px]">
+            <option value="">Anyone</option>
+            {(usersQ.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </Select>
+        </div>
+
+        {ticketsQ.isError ? (
+          <ErrorState message={apiErrorMsg(ticketsQ.error)} onRetry={() => ticketsQ.refetch()} />
+        ) : ticketsQ.isPending ? (
+          <TableSkeleton cols={8} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="No tickets found" hint="Adjust filters or open a new ticket."
+            action={manage ? <Button size="sm" onClick={() => { setFormTicket(null); setFormOpen(true); }}><IconPlus width={14} height={14} /> New ticket</Button> : undefined} />
+        ) : (
+          <Table minWidth="min-w-[980px]"
+            head={
+              <>
+                <Th>Ref</Th><Th>Subject</Th><Th>Client</Th><Th>Priority</Th><Th>Status</Th>
+                <Th>Assigned</Th><Th className="text-right">Time</Th><Th>Created</Th><Th className="text-right">Actions</Th>
+              </>
+            }>
+            {rows.map((t) => (
+              <tr key={t.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/tickets/${t.id}`)}>
+                <Td className="font-mono text-[12.5px] font-bold text-brand-800">{t.ref}</Td>
+                <Td className="max-w-[300px]"><p className="truncate font-bold group-hover:text-brand-800">{t.subject}</p></Td>
+                <Td className="font-medium">{t.clientName}</Td>
+                <Td><Badge tone={priorityTone(t.priority)} dot>{t.priority}</Badge></Td>
+                <Td><Badge tone={ticketTone(t.status)}>{t.status}</Badge></Td>
+                <Td className="text-mute">{t.assigneeName}</Td>
+                <Td className="text-right"><span className="tnum font-mono font-semibold">{t.minutesTotal > 0 ? fmtMinutes(t.minutesTotal) : "—"}</span></Td>
+                <Td className="text-mute"><span title={fmtDateTime(t.createdAt)}>{timeAgo(t.createdAt)}</span></Td>
+                <Td className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <Button variant="ghost" size="xs" title="Open ticket" onClick={() => navigate(`/tickets/${t.id}`)}><IconEye width={13} height={13} /></Button>
+                    {manage && (
+                      <Button variant="ghost" size="xs" title="Edit" onClick={() => { setFormTicket(t); setFormOpen(true); }}>
+                        <IconPencil width={13} height={13} />
+                      </Button>
+                    )}
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        )}
+
+        {!ticketsQ.isPending && total > 0 && <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />}
+      </Card>
+
+      <TicketFormModal open={formOpen} onClose={() => setFormOpen(false)} ticket={formTicket} />
     </div>
   );
 }
