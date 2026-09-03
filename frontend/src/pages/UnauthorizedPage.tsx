@@ -10,7 +10,7 @@ export function UnauthorizedPage() {
         <p className="mt-2 text-zinc-600">
           You do not have permission to access this page.
         </p>
-        <Button asChild className="mt-6">
+        <Button className="mt-6">
           <Link to="/">Back to Dashboard</Link>
         </Button>
       </div>
