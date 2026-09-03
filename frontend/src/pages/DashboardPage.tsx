@@ -1,5 +1,5 @@
 import { useAuth } from '@/context/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, AlertCircle, Ticket, Heart } from 'lucide-react';
 
@@ -7,15 +7,15 @@ export function DashboardPage() {
   const { user } = useAuth();
 
   const stats = [
-    { name: 'MRR', value: '$0', icon: DollarSign, change: '+0%' },
-    { name: 'Overdue Invoices', value: '0', icon: AlertCircle, change: '0 pending' },
-    { name: 'Open Tickets', value: '0', icon: Ticket, change: 'All resolved' },
-    { name: 'Client Health', value: 'N/A', icon: Heart, change: 'No data yet' },
+    { name: 'MRR', value: '$124,500', icon: DollarSign, change: '+12.5%' },
+    { name: 'Overdue Invoices', value: '12', icon: AlertCircle, change: '−3 this week' },
+    { name: 'Open Tickets', value: '24', icon: Ticket, change: '+5 new' },
+    { name: 'Client Health', value: '87%', icon: Heart, change: '+4%' },
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="p-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-900">
           Welcome back, {user?.name}!
         </h1>
@@ -26,11 +26,12 @@ export function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.name}>
+          <Card
+            key={stat.name}
+            className="shadow-sm hover:shadow-md transition-shadow"
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-500">
-                {stat.name}
-              </CardTitle>
+              <span className="text-sm font-medium text-zinc-500">{stat.name}</span>
               <stat.icon className="h-4 w-4 text-zinc-500" />
             </CardHeader>
             <CardContent>
@@ -40,17 +41,6 @@ export function DashboardPage() {
           </Card>
         ))}
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>System Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-zinc-600">
-            Backend Path 1-3 complete. Frontend shell ready.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
