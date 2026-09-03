@@ -1,23 +1,28 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-const Badge = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & { variant?: 'default' | 'secondary' | 'destructive' | 'outline' }>(
-  ({ className, variant = 'default', ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(
-        'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:ring-offset-2',
-        {
-          'border-transparent bg-zinc-900 text-zinc-50 hover:bg-zinc-900/80': variant === 'default',
-          'border-transparent bg-zinc-100 text-zinc-900 hover:bg-zinc-100/80': variant === 'secondary',
-          'border-transparent bg-red-900 text-zinc-50 hover:bg-red-900/80': variant === 'destructive',
-          'text-zinc-950': variant === 'outline',
-        },
-        className
-      )}
-      {...props}
-    />
-  )
+export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  variant?: 'default' | 'secondary' | 'destructive';
+}
+
+const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
+  ({ className, variant = 'default', children, ...props }, ref) => {
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+          {
+            'bg-zinc-200 text-zinc-700': variant === 'default',
+            'bg-zinc-100 text-zinc-900': variant === 'secondary',
+            'bg-red-100 text-red-900': variant === 'destructive',
+          },
+          className
+        )}
+        {...props}
+      />
+    );
+  }
 );
 Badge.displayName = 'Badge';
 

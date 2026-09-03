@@ -1,12 +1,13 @@
 export type Role = 'Admin' | 'Finance' | 'Support' | 'Sales';
 
-export interface User {
+export type User = {
   id: string;
   name: string;
   email: string;
-  role: Role;
-  status?: 'Active' | 'Inactive' | 'Suspended';
-}
+  role: 'Admin' | 'Finance' | 'Support' | 'Sales';
+  isActive: boolean; // <-- ADD THIS LINE
+  createdAt: string;
+};
 
 export interface AuthResponse {
   token: string;

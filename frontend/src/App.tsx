@@ -5,6 +5,12 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { LeadsPage } from '@/pages/LeadsPage';
+import { ClientsPage } from '@/pages/ClientsPage';
+import { LicensesPage } from '@/pages/LicensesPage';
+import { InvoicesPage } from '@/pages/InvoicesPage';
+import { SupportTicketsPage } from '@/pages/SupportTicketsPage';
+import { AuditLogsPage } from '@/pages/AuditLogsPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UnauthorizedPage } from '@/pages/UnauthorizedPage';
 
@@ -36,6 +42,19 @@ export default function App() {
               }
             >
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/leads" element={<LeadsPage />} />
+              <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/licenses" element={<LicensesPage />} />
+              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route path="/tickets" element={<SupportTicketsPage />} />
+              <Route
+                path="/audit-logs"
+                element={
+                  <ProtectedRoute allowedRoles={['Admin']}>
+                    <AuditLogsPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/users"
                 element={
@@ -44,13 +63,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              {/* Placeholder routes for future pages */}
-              <Route path="/leads" element={<div className="p-4 text-zinc-600">Leads Page - Coming Soon</div>} />
-              <Route path="/clients" element={<div className="p-4 text-zinc-600">Clients Page - Coming Soon</div>} />
-              <Route path="/licenses" element={<div className="p-4 text-zinc-600">Licenses Page - Coming Soon</div>} />
-              <Route path="/invoices" element={<div className="p-4 text-zinc-600">Invoices Page - Coming Soon</div>} />
-              <Route path="/tickets" element={<div className="p-4 text-zinc-600">Support Tickets Page - Coming Soon</div>} />
-              <Route path="/audit-logs" element={<div className="p-4 text-zinc-600">Audit Logs Page - Coming Soon</div>} />
             </Route>
 
             {/* Catch all */}

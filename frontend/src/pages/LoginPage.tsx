@@ -68,6 +68,7 @@ export function LoginPage() {
                   aria-hidden="true"
                 />
                 <Input
+                  className="pl-10"
                   id="email"
                   type="email"
                   placeholder="admin@clientnest.com"
@@ -90,6 +91,7 @@ export function LoginPage() {
                   aria-hidden="true"
                 />
                 <Input
+                  className="pl-10"
                   id="password"
                   type="password"
                   placeholder="••••••••"

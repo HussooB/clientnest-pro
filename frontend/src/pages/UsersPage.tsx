@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { User, ApiResponse } from '@/types';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -11,9 +12,52 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, type SelectOption } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/context/AuthContext';
+import { Modal } from '@/components/ui/modal';
+import { UserPlus, Users, Trash, Eye, Edit, } from 'lucide-react';
+
+type UserFormValues = {
+  name: string;
+  email: string;
+  password?: string;
+  role: 'Admin' | 'Finance' | 'Support' | 'Sales';
+  active: boolean;
+};
+
+const roleOptions: SelectOption[] = [
+  { value: 'Admin', label: 'Admin' },
+  { value: 'Finance', label: 'Finance' },
+  { value: 'Support', label: 'Support' },
+  { value: 'Sales', label: 'Sales' },
+];
 
 export function UsersPage() {
-  const { data, isLoading, error } = useQuery<{ users: User[] }>({
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Check admin permission
+  const isAdmin = user?.role === 'Admin';
+
+  if (!isAdmin) {
+    return (
+      <div className="p-6">
+        <div className="rounded-md bg-zinc-50 p-4 text-zinc-600">
+          <p>Access denied. Admin role required.</p>
+          <Button onClick={() => window.history.back()}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Fetch users
+  const {
+    data,
+    isLoading,
+    error,
+  } = useQuery<{ users: User[] }>({
     queryKey: ['users'],
     queryFn: async () => {
       const response = await api.get<ApiResponse<{ users: User[] }>>('/users');
@@ -22,12 +66,29 @@ export function UsersPage() {
       }
       return response.data.data;
     },
+    staleTime: 30000,
+  });
+
+  // Create user mutation
+  const createMutation = useMutation({
+    mutationFn: async (variables: UserFormValues) => {
+      const response = await api.post<ApiResponse<User>>('/users', variables);
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to create user');
+      }
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
   });
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+      <div className="p-6">
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+        </div>
       </div>
     );
   }
@@ -41,52 +102,45 @@ export function UsersPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-zinc-900">Users</h1>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          Add User
-        </Button>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data?.users.map((user) => (
-            <TableRow key={user.id} className="border-y border-zinc-200">
-              <TableCell className="font-medium">{user.name}</TableCell>
-              <TableCell>{user.email}</TableCell>
-              <TableCell>
+      {/* Action */}
+      <div className="mb-4">
+        <Button>Create User</Button>
+      </div>
+
+      {/* Table */}
+      {data?.users.map((user) => (
+        <Card key={user.id} className="shadow-sm border-b border-zinc-200 overflow-hidden">
+          <div className="p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-zinc-500 text-sm">Name</p>
+                <p className="font-medium">{user.name}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-sm">Email</p>
+                <p className="font-medium text-zinc-400">{user.email}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-sm">Role</p>
                 <Badge variant="secondary">{user.role}</Badge>
-              </TableCell>
-              <TableCell>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-sm">Status</p>
                 <Badge
-                  variant={
-                    user.status === 'Active'
-                      ? 'default'
-                      : user.status === 'Inactive'
-                      ? 'secondary'
-                      : 'destructive'
-                  }
+                  variant={user.isActive ? 'default' : 'destructive'}
                 >
-                  {user.status || 'Active'}
+                  {user.isActive ? 'Active' : 'Inactive'}
                 </Badge>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              </div>
+            </div>
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }

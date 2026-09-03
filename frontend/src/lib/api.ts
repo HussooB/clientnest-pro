@@ -1,20 +1,19 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse } from '@/types';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export const api = axios.create({
-  baseURL: API_URL,
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor: add Authorization header
-api.interceptors.request.use(
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
-    if (token && config.headers) {
+    const token = localStorage.getItem('clientnest_token');
+    if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -22,17 +21,18 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle 401 errors
-api.interceptors.response.use(
+// Response interceptor to handle 401
+apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiResponse<unknown>>) => {
+  (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      localStorage.removeItem('clientnest_token');
+      localStorage.removeItem('clientnest_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
 
-export default api;
+// Default export for use in the app
+export default apiClient;

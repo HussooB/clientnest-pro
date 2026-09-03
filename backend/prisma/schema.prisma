@@ -109,7 +109,7 @@ model AuditLog {
 
 model Client {
   id              String       @id @default(cuid())
-  companyName     String
+  companyName     String       @unique
   taxId           String?
   billingAddress  String?
   industryType    String?
