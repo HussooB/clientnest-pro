@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isDemoMode, onDemoMode } from "../lib/api";
 import { initials } from "../lib/utils";
 import type { Role } from "../types";
 import {
@@ -56,17 +55,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/audit-logs/, "Audit Trail"],
 ];
 
-function DemoBadge() {
-  const [demo, setDemo] = useState(isDemoMode());
-  useEffect(() => onDemoMode(setDemo), []);
-  if (!demo) return null;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-800">
-      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse-soft" />
-      Demo data · API offline
-    </span>
-  );
-}
+
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, initializing } = useAuth();
@@ -188,7 +177,6 @@ export default function Layout() {
             <span className="text-brand-800">{title}</span>
           </p>
           <div className="flex items-center gap-3">
-            <DemoBadge />
             <span className="hidden text-[12.5px] font-medium text-mute sm:block">
               {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
             </span>

@@ -1,9 +1,6 @@
 import axios, { AxiosError } from "axios";
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import { handleMock } from "./mockdb";
 
-// NOTE (SRS integration fix): baseURL already contains `/api`, so every call
-// in the app uses paths WITHOUT the `/api` prefix (e.g. `/leads`, `/clients`).
 const API_BASE = "http://localhost:5000/api";
 const TOKEN_KEY = "clientnest.token";
 
@@ -13,47 +10,31 @@ export const setToken = (t: string | null) => {
   else localStorage.removeItem(TOKEN_KEY);
 };
 
-// Demo-data fallback: when the backend at localhost:5000 is unreachable the
-// app transparently switches to an in-browser API with seeded data so every
-// screen remains fully functional. The UI surfaces a "Demo data" badge.
-type DemoListener = (v: boolean) => void;
-const demoListeners = new Set<DemoListener>();
-let demoMode = false;
+// Create Axios instance with a 10-second timeout to allow Neon DB to wake up
+const api = axios.create({ 
+  baseURL: API_BASE, 
+  timeout: 10000 
+});
 
-export const isDemoMode = () => demoMode;
-export const onDemoMode = (fn: DemoListener) => {
-  demoListeners.add(fn);
-  fn(demoMode);
-  return () => {
-    demoListeners.delete(fn);
-  };
-};
-const setDemoMode = (v: boolean) => {
-  if (demoMode === v) return;
-  demoMode = v;
-  demoListeners.forEach((fn) => fn(v));
-};
-
-const realAdapter = axios.getAdapter("xhr");
-
-const api = axios.create({ baseURL: API_BASE, timeout: 2500 });
-
-api.interceptors.request.use((config) => {
+// Attach JWT token to every request
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const t = getToken();
-  if (t) config.headers.Authorization = `Bearer ${t}`;
+  if (t && config.headers) {
+    config.headers.Authorization = `Bearer ${t}`;
+  }
   return config;
 });
 
-api.defaults.adapter = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
-  if (demoMode) return handleMock(config);
-  try {
-    return await realAdapter(config);
-  } catch (err) {
-    // A response means the backend IS up (e.g. 401/404/500) — propagate.
-    if (err instanceof AxiosError && err.response) throw err;
-    setDemoMode(true);
-    return handleMock(config);
+// Handle 401 Unauthorized by clearing token and redirecting to login
+api.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      setToken(null);
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
   }
-};
+);
 
 export default api;

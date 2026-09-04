@@ -51,7 +51,7 @@ export default function DashboardPage() {
       { queryKey: ["dash", "licenses-expiring"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { expiringWithin: 30, limit: 100 } })).data.data },
       { queryKey: ["dash", "licenses-all"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { limit: 200 } })).data.data },
       { queryKey: ["dash", "tickets-open"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "Open", limit: 100 } })).data.data },
-      { queryKey: ["dash", "tickets-progress"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "In Progress", limit: 100 } })).data.data },
+      { queryKey: ["dash", "tickets-progress"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "InProgress", limit: 100 } })).data.data },
       { queryKey: ["dash", "clients"], queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", { params: { limit: 100 } })).data.data },
       { queryKey: ["dash", "leads"], queryFn: async () => (await api.get<ListResponse<Lead>>("/leads", { params: { limit: 100 } })).data.data },
       { queryKey: ["dash", "invoices-overdue"], queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { status: "Overdue", limit: 100 } })).data.data },

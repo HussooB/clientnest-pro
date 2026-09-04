@@ -24,9 +24,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        // NOTE: no `/api` prefix — baseURL already contains it.
-        const { data } = await api.get<User>("/auth/me");
-        if (alive) setUser(data);
+        // ✅ Correctly unwrap the { success, data } envelope
+        const response = await api.get<{ success: boolean; data: { user: User } }>("/auth/me");
+        if (response.data.success && response.data.data) {
+          if (alive) setUser(response.data.data.user);
+        } else {
+          setToken(null);
+        }
       } catch {
         setToken(null);
       } finally {
@@ -39,10 +43,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { data } = await api.post<{ token: string; user: User }>("/auth/login", { email, password });
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
+    // ✅ Correctly unwrap the { success, data } envelope
+    const response = await api.post<{ 
+      success: boolean; 
+      data: { token: string; user: User }; 
+      message?: string 
+    }>("/auth/login", { email, password });
+    
+    if (response.data.success && response.data.data) {
+      setToken(response.data.data.token);
+      setUser(response.data.data.user);
+      return response.data.data.user;
+    } else {
+      throw new Error(response.data.message || "Login failed");
+    }
   }, []);
 
   const logout = useCallback(() => {

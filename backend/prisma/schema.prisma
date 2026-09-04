@@ -60,6 +60,7 @@ enum InvoiceStatus {
   Sent
   PartiallyPaid
   Paid
+  Overdue
 }
 
 enum PaymentCategory {
@@ -74,6 +75,20 @@ enum HostingCycle {
   Yearly
 }
 
+enum TicketPriority {
+  Low
+  Medium
+  High
+  Critical
+}
+
+enum TicketStatus {
+  Open
+  InProgress
+  Resolved
+  Closed
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -84,10 +99,12 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  auditLogs    AuditLog[]
-  clients      Client[]   @relation("AccountOwner")
-  payments     Payment[]
-  creditNotes  CreditNote[]
+  auditLogs       AuditLog[]
+  clients         Client[]     @relation("AccountOwner")
+  payments        Payment[]
+  creditNotes     CreditNote[]
+  assignedTickets Ticket[]     // Added back-relation field
+  timeLogs        TimeLog[]    // Added back-relation field
 }
 
 model AuditLog {
@@ -129,6 +146,7 @@ model Client {
   contacts        Contact[]
   licenses        License[]
   invoices        Invoice[]
+  tickets         Ticket[]     // Added back-relation field
 
   @@index([companyName])
 }
@@ -232,4 +250,56 @@ model CreditNote {
 
   invoice     Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   createdBy   User       @relation(fields: [createdById], references: [id])
+}
+
+// Module F — Support Tickets & Activity
+model Ticket {
+  id              String          @id @default(cuid())
+  ref             String          @unique
+  clientId        String
+  subject         String
+  description     String?
+  priority        TicketPriority  @default(Medium)
+  status          TicketStatus    @default(Open)
+  assignedToId    String?
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  client          Client          @relation(fields: [clientId], references: [id])
+  assignedTo      User?           @relation(fields: [assignedToId], references: [id])
+  timeLogs        TimeLog[]
+  attachments     Attachment[]
+  
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TimeLog {
+  id          String   @id @default(cuid())
+  ticketId    String
+  userId      String
+  minutes     Int
+  note        String?
+  createdAt   DateTime @default(now())
+  
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@index([ticketId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  ticketId    String
+  name        String
+  size        Int      
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+  
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  @@index([ticketId])
 }
