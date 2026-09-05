@@ -25,13 +25,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// Handle 401 Unauthorized by clearing token and redirecting to login
+// Handle 401 Unauthorized — reject the promise so TanStack Query handles
+// the error state (isError, refetch, etc.). The app uses React Router
+// Navigate components for auth-required routes, not hard redirects in
+// an interceptor, which avoids white-screen flash and redirect loops.
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       setToken(null);
-      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

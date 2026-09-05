@@ -58,23 +58,9 @@ const TITLES: [RegExp, string][] = [
 
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, initializing } = useAuth();
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setReady(true), 350);
-    return () => clearTimeout(t);
-  }, []);
-  if (initializing || !ready)
-    return (
-      <div className="grid h-screen place-items-center bg-paper">
-        <div className="flex flex-col items-center gap-3">
-          <LogoMark size={44} />
-          <div className="skeleton h-2 w-36" />
-        </div>
-      </div>
-    );
-  if (!user) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+  const { user } = useAuth();
+  if (user) return <>{children}</>;
+  return <Navigate to="/login" replace />;
 }
 
 export function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }) {

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -45,23 +45,48 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const role = user?.role ?? "Admin";
 
-  const results = useQueries({
-    queries: [
-      { queryKey: ["dash", "overdue-hosting"], queryFn: async () => (await api.get<OverdueHostingRow[]>("/reports/overdue-hosting")).data },
-      { queryKey: ["dash", "licenses-expiring"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { expiringWithin: 30, limit: 100 } })).data.data },
-      { queryKey: ["dash", "licenses-all"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { limit: 200 } })).data.data },
-      { queryKey: ["dash", "tickets-open"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "Open", limit: 100 } })).data.data },
-      { queryKey: ["dash", "tickets-progress"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "InProgress", limit: 100 } })).data.data },
-      { queryKey: ["dash", "clients"], queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", { params: { limit: 100 } })).data.data },
-      { queryKey: ["dash", "leads"], queryFn: async () => (await api.get<ListResponse<Lead>>("/leads", { params: { limit: 100 } })).data.data },
-      { queryKey: ["dash", "invoices-overdue"], queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { status: "Overdue", limit: 100 } })).data.data },
-      { queryKey: ["dash", "invoices-all"], queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { limit: 100 } })).data.data },
-    ],
+  // ✅ FIXED: Using individual useQuery hooks instead of the broken useQueries array destructuring
+  const qHosting = useQuery({
+    queryKey: ["dash", "overdue-hosting"],
+    queryFn: async () => (await api.get<OverdueHostingRow[]>("/reports/overdue-hosting")).data,
+  });
+  const qLicExp = useQuery({
+    queryKey: ["dash", "licenses-expiring"],
+    queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { expiringWithin: 30, limit: 100 } })).data.data,
+  });
+  const qLicAll = useQuery({
+    queryKey: ["dash", "licenses-all"],
+    queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { limit: 200 } })).data.data,
+  });
+  const qTkOpen = useQuery({
+    queryKey: ["dash", "tickets-open"],
+    queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "Open", limit: 100 } })).data.data,
+  });
+  const qTkProg = useQuery({
+    queryKey: ["dash", "tickets-progress"],
+    queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "InProgress", limit: 100 } })).data.data,
+  });
+  const qClients = useQuery({
+    queryKey: ["dash", "clients"],
+    queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", { params: { limit: 100 } })).data.data,
+  });
+  const qLeads = useQuery({
+    queryKey: ["dash", "leads"],
+    queryFn: async () => (await api.get<ListResponse<Lead>>("/leads", { params: { limit: 100 } })).data.data,
+  });
+  const qInvOverdue = useQuery({
+    queryKey: ["dash", "invoices-overdue"],
+    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { status: "Overdue", limit: 100 } })).data.data,
+  });
+  const qInvAll = useQuery({
+    queryKey: ["dash", "invoices-all"],
+    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { limit: 100 } })).data.data,
   });
 
-  const [qHosting, qLicExp, qLicAll, qTkOpen, qTkProg, qClients, qLeads, qInvOverdue, qInvAll] = results;
-  const pending = results.some((r) => r.isPending);
-  const failed = results.some((r) => r.isError);
+  // ✅ FIXED: Safely check pending/failed states from the query objects
+  const queries = [qHosting, qLicExp, qLicAll, qTkOpen, qTkProg, qClients, qLeads, qInvOverdue, qInvAll];
+  const pending = queries.some((q) => q.isPending);
+  const failed = queries.some((q) => q.isError);
 
   const view = useMemo(() => {
     if (pending || failed) return null;
@@ -131,7 +156,14 @@ export default function DashboardPage() {
     };
   }, [pending, failed, qHosting.data, qLicExp.data, qLicAll.data, qTkOpen.data, qTkProg.data, qClients.data, qLeads.data, qInvOverdue.data, qInvAll.data]);
 
-  if (failed) return <ErrorState message="Dashboard metrics could not be loaded." onRetry={() => results.forEach((r) => r.refetch())} />;
+  if (failed) {
+    return (
+      <ErrorState 
+        message="Dashboard metrics could not be loaded." 
+        onRetry={() => queries.forEach((q) => q.refetch())} 
+      />
+    );
+  }
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";

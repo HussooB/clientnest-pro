@@ -5,7 +5,7 @@ import type { User } from "../types";
 
 interface AuthState {
   user: User | null;
-  initializing: boolean;
+  loggingIn: boolean;
   login: (email: string, password: string) => Promise<User>;
   logout: () => void;
 }
@@ -18,21 +18,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      if (!getToken()) {
-        setInitializing(false);
+    ;(async () => {
+      const token = getToken();
+      if (!token) {
+        if (alive) setInitializing(false);
         return;
       }
       try {
-        // ✅ Correctly unwrap the { success, data } envelope
         const response = await api.get<{ success: boolean; data: { user: User } }>("/auth/me");
-        if (response.data.success && response.data.data) {
-          if (alive) setUser(response.data.data.user);
-        } else {
-          setToken(null);
+        if (alive && response.data?.success && response.data?.data) {
+          setUser(response.data.data.user);
         }
       } catch {
-        setToken(null);
+        // If /auth/me fails, don't clear the token — let the
+        // API response interceptor handle 401 redirects. Just
+        // mark initializing as complete so the UI proceeds.
       } finally {
         if (alive) setInitializing(false);
       }
@@ -43,19 +43,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    // ✅ Correctly unwrap the { success, data } envelope
-    const response = await api.post<{ 
-      success: boolean; 
-      data: { token: string; user: User }; 
-      message?: string 
-    }>("/auth/login", { email, password });
-    
-    if (response.data.success && response.data.data) {
-      setToken(response.data.data.token);
-      setUser(response.data.data.user);
-      return response.data.data.user;
-    } else {
+    setInitializing(true);
+    try {
+      const response = await api.post<{
+        success: boolean;
+        data: { token: string; user: User };
+        message?: string;
+      }>("/auth/login", { email, password });
+
+      if (response.data.success && response.data.data) {
+        setToken(response.data.data.token);
+        setUser(response.data.data.user);
+        return response.data.data.user;
+      }
       throw new Error(response.data.message || "Login failed");
+    } catch (err) {
+      throw err;
+    } finally {
+      setInitializing(false);
     }
   }, []);
 
@@ -65,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, initializing, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
