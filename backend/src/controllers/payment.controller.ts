@@ -21,18 +21,18 @@ async function computeInvoiceBalance(invoiceId: string): Promise<{
     throw new ApiError(404, "Invoice not found");
   }
 
-  const paidAmount = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-  const creditTotal = invoice.creditNotes.reduce((sum, c) => sum + c.amount, 0);
+  const paidAmount = invoice.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
+  const creditTotal = invoice.creditNotes.reduce((sum: number, c: { amount: number }) => sum + c.amount, 0);
   const balance = invoice.totalAmount - paidAmount - creditTotal;
 
   return { paidAmount, creditTotal, balance };
 }
 
 export async function listPayments(req: Request, res: Response): Promise<void> {
-  const { invoiceId } = req.query;
+  const { invoiceId } = req.query as { invoiceId?: string };
 
   const where: { invoiceId?: string } = {};
-  if (invoiceId && typeof invoiceId === "string") {
+  if (invoiceId) {
     where.invoiceId = invoiceId;
   }
 
@@ -84,9 +84,9 @@ export async function createPayment(req: Request, res: Response): Promise<void> 
       data: {
         invoiceId: input.invoiceId,
         amount: input.amount,
-        method: input.method,
+        method: input.method as string | null,
         category: input.category,
-        notes: input.notes,
+        notes: input.notes as string | null,
         createdById: user.sub,
       },
       include: {

@@ -5,7 +5,7 @@ import { leadSchema, markLeadLostSchema } from "../validators/lead.validator";
 import type { LeadStage, LostReason, LeadSource } from "@prisma/client";
 
 export async function listLeads(req: Request, res: Response): Promise<void> {
-  const { search, stage } = req.query;
+  const { search, stage } = req.query as { search?: string; stage?: LeadStage };
 
   const where: {
     companyName?: { contains: string };
@@ -13,11 +13,11 @@ export async function listLeads(req: Request, res: Response): Promise<void> {
   } = {};
 
   if (search) {
-    where.companyName = { contains: search as string };
+    where.companyName = { contains: search };
   }
 
   if (stage) {
-    where.stage = stage as LeadStage;
+    where.stage = stage;
   }
 
   const leads = await prisma.lead.findMany({
@@ -32,7 +32,7 @@ export async function listLeads(req: Request, res: Response): Promise<void> {
 }
 
 export async function getLead(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const lead = await prisma.lead.findUnique({
     where: { id },
@@ -66,7 +66,7 @@ export async function createLead(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateLead(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const input = leadSchema.parse(req.body);
 
   const existing = await prisma.lead.findUnique({
@@ -93,7 +93,7 @@ export async function updateLead(req: Request, res: Response): Promise<void> {
 }
 
 export async function convertLead(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const lead = await prisma.lead.findUnique({
     where: { id },
@@ -147,7 +147,7 @@ export async function convertLead(req: Request, res: Response): Promise<void> {
 }
 
 export async function markLeadLost(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const { lostReason } = markLeadLostSchema.parse(req.body);
 
   const existing = await prisma.lead.findUnique({

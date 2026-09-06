@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { ApiError } from "../utils/ApiError";
 import { licenseSchema, licenseQuerySchema } from "../validators/license.validator";
-import type { LicenseType } from "@prisma/client";
+import type { LicenseType, Prisma } from "@prisma/client";
 
 export async function listLicenses(req: Request, res: Response): Promise<void> {
   const query = licenseQuerySchema.parse(req.query);
@@ -57,7 +57,7 @@ export async function listLicenses(req: Request, res: Response): Promise<void> {
 }
 
 export async function getLicense(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const license = await prisma.license.findUnique({
     where: { id },
@@ -93,10 +93,13 @@ export async function createLicense(req: Request, res: Response): Promise<void> 
 
   const license = await prisma.license.create({
     data: {
-      ...input,
+      clientId: input.clientId,
+      productId: input.productId,
       type: input.type as LicenseType,
-      endDate: input.endDate || null,
-    },
+      startDate: input.startDate,
+      endDate: input.endDate ? new Date(input.endDate) : null,
+      seats: input.seats ?? undefined,
+    } as Prisma.LicenseUncheckedCreateInput,
     include: {
       client: true,
       product: true,
@@ -121,7 +124,7 @@ export async function createLicense(req: Request, res: Response): Promise<void> 
 }
 
 export async function updateLicense(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const input = licenseSchema.partial().parse(req.body);
 
   const existing = await prisma.license.findUnique({
@@ -163,7 +166,7 @@ export async function updateLicense(req: Request, res: Response): Promise<void> 
 }
 
 export async function deleteLicense(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const existing = await prisma.license.findUnique({
     where: { id },

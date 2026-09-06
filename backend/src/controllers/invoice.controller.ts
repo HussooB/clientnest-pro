@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { ApiError } from "../utils/ApiError";
 import { invoiceCreateSchema, invoiceUpdateSchema } from "../validators/invoice.validator";
+import { ApiError } from "../utils/ApiError";
 import { logAudit, getAuditInput } from "../utils/audit";
 import type { InvoiceStatus } from "@prisma/client";
 
@@ -27,8 +27,14 @@ async function computeInvoiceBalance(invoiceId: string): Promise<{
     throw new ApiError(404, "Invoice not found");
   }
 
-  const paidAmount = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-  const creditTotal = invoice.creditNotes.reduce((sum, c) => sum + c.amount, 0);
+  const paidAmount = invoice.payments.reduce(
+    (sum: number, p: { amount: number }) => sum + p.amount,
+    0
+  );
+  const creditTotal = invoice.creditNotes.reduce(
+    (sum: number, c: { amount: number }) => sum + c.amount,
+    0
+  );
   const balance = invoice.totalAmount - paidAmount - creditTotal;
   const isOverdue = invoice.status !== "Paid" && new Date(invoice.dueDate) < new Date();
 
@@ -36,7 +42,10 @@ async function computeInvoiceBalance(invoiceId: string): Promise<{
 }
 
 export async function listInvoices(req: Request, res: Response): Promise<void> {
-  const { status, clientId } = req.query;
+  const { status, clientId } = req.query as {
+    status?: string;
+    clientId?: string;
+  };
 
   const where: { deletedAt?: null; status?: InvoiceStatus; clientId?: string } = {
     deletedAt: null,
@@ -80,7 +89,7 @@ export async function listInvoices(req: Request, res: Response): Promise<void> {
 }
 
 export async function getInvoice(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const invoice = await prisma.invoice.findUnique({
     where: { id, deletedAt: null },
@@ -157,7 +166,7 @@ export async function createInvoice(req: Request, res: Response): Promise<void> 
 }
 
 export async function updateInvoice(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const input = invoiceUpdateSchema.parse(req.body);
   const user = req.user!;
 
@@ -208,7 +217,7 @@ export async function updateInvoice(req: Request, res: Response): Promise<void> 
 }
 
 export async function deleteInvoice(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const user = req.user!;
 
   const existing = await prisma.invoice.findUnique({
@@ -239,7 +248,7 @@ export async function deleteInvoice(req: Request, res: Response): Promise<void> 
 }
 
 export async function getStatementOfAccount(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const client = await prisma.client.findUnique({
     where: { id, deletedAt: null },
@@ -261,16 +270,27 @@ export async function getStatementOfAccount(req: Request, res: Response): Promis
 
   const invoicesWithBalances = await Promise.all(
     client.invoices.map(async (inv) => {
-      const paidAmount = inv.payments.reduce((sum, p) => sum + p.amount, 0);
-      const creditTotal = inv.creditNotes.reduce((sum, c) => sum + c.amount, 0);
+      const paidAmount = inv.payments.reduce(
+        (sum: number, p: { amount: number }) => sum + p.amount,
+        0
+      );
+      const creditTotal = inv.creditNotes.reduce(
+        (sum: number, c: { amount: number }) => sum + c.amount,
+        0
+      );
       const balance = inv.totalAmount - paidAmount - creditTotal;
       const isOverdue = inv.status !== "Paid" && new Date(inv.dueDate) < new Date();
       return { ...inv, paidAmount, creditTotal, balance, isOverdue };
     })
   );
 
-  const totalOutstanding = invoicesWithBalances.reduce((sum, inv) => sum + inv.balance, 0);
-  const totalOverdue = invoicesWithBalances.filter(inv => inv.isOverdue).reduce((sum, inv) => sum + inv.balance, 0);
+  const totalOutstanding = invoicesWithBalances.reduce(
+    (sum: number, inv: { balance: number }) => sum + inv.balance,
+    0
+  );
+  const totalOverdue = invoicesWithBalances
+    .filter((inv) => inv.isOverdue)
+    .reduce((sum: number, inv: { balance: number }) => sum + inv.balance, 0);
 
   let hostingNextDueDate: Date | null = null;
   if (client.hostingFeeAmount && client.hostingCycle) {

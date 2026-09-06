@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { ApiError } from "../utils/ApiError";
 
 export async function getAuditLogs(req: Request, res: Response): Promise<void> {
   const { userId, entityType, from, to } = req.query;

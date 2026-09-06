@@ -4,12 +4,8 @@ import { ApiError } from "../utils/ApiError";
 import { clientSchema } from "../validators/client.validator";
 import type { Client, ClientStatus } from "@prisma/client";
 
-type ClientWithContacts = Client & {
-  contacts: typeof import("@prisma/client").Contact[];
-};
-
 export async function listClients(req: Request, res: Response): Promise<void> {
-  const { includeDeleted } = req.query;
+  const { includeDeleted } = req.query as { includeDeleted?: string };
   const isAdmin = req.user?.role === "Admin";
 
   if (includeDeleted === "true" && !isAdmin) {
@@ -34,7 +30,7 @@ export async function listClients(req: Request, res: Response): Promise<void> {
 }
 
 export async function getClient(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
 
   const client = await prisma.client.findUnique({
     where: { id, deletedAt: null },
@@ -57,7 +53,7 @@ export async function createClient(req: Request, res: Response): Promise<void> {
   const client = await prisma.client.create({
     data: {
       ...input,
-      status: (input.status as ClientStatus) || "Prospect",
+      status: input.status as ClientStatus | "Prospect",
     },
     include: { contacts: true },
   });
@@ -69,7 +65,7 @@ export async function createClient(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateClient(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const input = clientSchema.parse(req.body);
 
   const existing = await prisma.client.findUnique({
@@ -93,7 +89,7 @@ export async function updateClient(req: Request, res: Response): Promise<void> {
 }
 
 export async function deleteClient(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const isAdmin = req.user?.role === "Admin";
 
   if (!isAdmin) {
@@ -120,7 +116,7 @@ export async function deleteClient(req: Request, res: Response): Promise<void> {
 }
 
 export async function addContact(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+  const { id } = req.params as { id: string };
   const { name, email, phone, contactType, notifyEmail } = req.body;
 
   const client = await prisma.client.findUnique({
@@ -133,10 +129,10 @@ export async function addContact(req: Request, res: Response): Promise<void> {
 
   const contact = await prisma.contact.create({
     data: {
-      name,
+      name: name || undefined,
       email: email || null,
       phone: phone || null,
-      contactType,
+      contactType: contactType || undefined,
       notifyEmail: notifyEmail ?? true,
       clientId: id,
     },
@@ -149,7 +145,7 @@ export async function addContact(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateContact(req: Request, res: Response): Promise<void> {
-  const { id, contactId } = req.params;
+  const { id, contactId } = req.params as { id: string; contactId: string };
   const { name, email, phone, contactType, notifyEmail } = req.body;
 
   const contact = await prisma.contact.findUnique({
@@ -163,10 +159,10 @@ export async function updateContact(req: Request, res: Response): Promise<void> 
   const updated = await prisma.contact.update({
     where: { id: contactId },
     data: {
-      name,
+      name: name || undefined,
       email: email || null,
       phone: phone || null,
-      contactType,
+      contactType: contactType || undefined,
       notifyEmail: notifyEmail ?? true,
     },
   });
@@ -178,7 +174,7 @@ export async function updateContact(req: Request, res: Response): Promise<void> 
 }
 
 export async function deleteContact(req: Request, res: Response): Promise<void> {
-  const { id, contactId } = req.params;
+  const { id, contactId } = req.params as { id: string; contactId: string };
 
   const contact = await prisma.contact.findUnique({
     where: { id: contactId },

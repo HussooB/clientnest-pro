@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma";
 import { ApiError } from "../utils/ApiError";
 import { productSchema } from "../validators/product.validator";
 
-export async function listProducts(req: Request, res: Response): Promise<void> {
+export async function listProducts(_req: Request, res: Response): Promise<void> {
   const products = await prisma.product.findMany({
     orderBy: { name: "asc" },
   });
@@ -14,8 +14,8 @@ export async function listProducts(req: Request, res: Response): Promise<void> {
   });
 }
 
-export async function getProduct(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+export async function getProduct(_req: Request, res: Response): Promise<void> {
+  const { id } = _req.params as { id: string };
 
   const product = await prisma.product.findUnique({
     where: { id },
@@ -31,11 +31,15 @@ export async function getProduct(req: Request, res: Response): Promise<void> {
   });
 }
 
-export async function createProduct(req: Request, res: Response): Promise<void> {
-  const input = productSchema.parse(req.body);
+export async function createProduct(_req: Request, res: Response): Promise<void> {
+  const input = productSchema.parse(_req.body);
 
   const product = await prisma.product.create({
-    data: input,
+    data: {
+      name: input.name,
+      description: input.description as string | null,
+      basePrice: input.basePrice,
+    },
   });
 
   res.status(201).json({
@@ -44,9 +48,9 @@ export async function createProduct(req: Request, res: Response): Promise<void> 
   });
 }
 
-export async function updateProduct(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
-  const input = productSchema.parse(req.body);
+export async function updateProduct(_req: Request, res: Response): Promise<void> {
+  const { id } = _req.params as { id: string };
+  const input = productSchema.parse(_req.body);
 
   const existing = await prisma.product.findUnique({
     where: { id },
@@ -58,7 +62,11 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
 
   const product = await prisma.product.update({
     where: { id },
-    data: input,
+    data: {
+      name: input.name,
+      description: input.description as string | null,
+      basePrice: input.basePrice,
+    },
   });
 
   res.status(200).json({
@@ -67,8 +75,8 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
   });
 }
 
-export async function deleteProduct(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+export async function deleteProduct(_req: Request, res: Response): Promise<void> {
+  const { id } = _req.params as { id: string };
 
   const existing = await prisma.product.findUnique({
     where: { id },
