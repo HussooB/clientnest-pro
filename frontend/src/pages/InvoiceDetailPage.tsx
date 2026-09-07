@@ -164,7 +164,11 @@ export default function InvoiceDetailPage() {
 
   const bundleQ = useQuery({
     queryKey: ["invoice", id],
-    queryFn: async () => (await api.get<InvoiceBundle>(`/invoices/${id}`)).data,
+    queryFn: async () => {
+      const res = await api.get<InvoiceBundle>(`/invoices/${id}`);
+      // ✅ FIXED: Safely unwrap the response in case the backend returns { success: true, data: { invoice, client, ... } }
+      return (res.data as any)?.data ?? res.data;
+    },
   });
 
   const downloadSoa = async () => {
@@ -181,8 +185,11 @@ export default function InvoiceDetailPage() {
   };
 
   if (bundleQ.isError) return <ErrorState message={apiErrorMsg(bundleQ.error)} onRetry={() => bundleQ.refetch()} />;
-  const bundle = bundleQ.data;
-  if (!bundle)
+  
+  const bundle = bundleQ.data as InvoiceBundle | undefined;
+  
+  // ✅ FIXED: Safely check if bundle and invoice exist before destructuring
+  if (!bundle || !bundle.invoice) {
     return (
       <div className="space-y-4">
         <div className="skeleton h-24 w-full rounded-xl" />
@@ -192,8 +199,9 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
     );
+  }
 
-  const { invoice, client, payments, creditNotes } = bundle;
+  const { invoice, client, payments = [], creditNotes = [] } = bundle;
   const overdue = invoice.status === "Overdue";
 
   const timeline: ActivityItem[] = [
@@ -224,7 +232,7 @@ export default function InvoiceDetailPage() {
               {overdue && <Badge tone="red">{daysOverdue(invoice.dueDate)} days overdue</Badge>}
             </div>
             <p className="mt-1.5 text-[13.5px] text-mute">
-              Billed to <strong className="text-ink">{client?.companyName ?? "—"}</strong>
+              Billed to <strong className="text-ink">{client?.companyName ?? "Unknown Client"}</strong>
               {client?.taxId && <span className="font-mono"> · {client.taxId}</span>} · Issued {fmtDate(invoice.issueDate)} · Due {fmtDate(invoice.dueDate)}
             </p>
           </div>
@@ -249,7 +257,7 @@ export default function InvoiceDetailPage() {
             { label: "Subtotal", value: fmtMoney(invoice.subtotal) },
             { label: `Tax ${invoice.taxRatePct}%`, value: fmtMoney(invoice.taxAmount) },
             { label: "Total", value: fmtMoney(invoice.totalAmount), strong: true },
-            { label: "Paid + credits", value: fmtMoney(invoice.paid + invoice.credits), good: true },
+            { label: "Paid + credits", value: fmtMoney(invoice.paid + (invoice as any).credits || 0), good: true },
             { label: "Balance due", value: fmtMoney(invoice.balance), warn: invoice.balance > 0 && overdue },
           ].map((s) => (
             <div key={s.label} className={`rounded-lg border px-4 py-3 ${s.warn ? "border-rose-300 bg-rose-50" : "border-line/80 bg-paper/60"}`}>
@@ -266,7 +274,7 @@ export default function InvoiceDetailPage() {
           <Card title="Line items" pad={false} className="animate-fade-up">
             <Table minWidth="min-w-[520px]"
               head={<><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Unit price</Th><Th className="text-right">Amount</Th></>}>
-              {invoice.items.map((it) => (
+              {invoice.items?.map((it) => (
                 <tr key={it.id}>
                   <Td className="font-medium">{it.description}</Td>
                   <Td className="text-right"><span className="tnum font-mono">{it.qty}</span></Td>

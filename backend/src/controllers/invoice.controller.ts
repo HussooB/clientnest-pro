@@ -74,8 +74,10 @@ export async function listInvoices(req: Request, res: Response): Promise<void> {
       const { paidAmount, creditTotal, balance, isOverdue } = await computeInvoiceBalance(inv.id);
       return {
         ...inv,
-        paidAmount,
-        creditTotal,
+        // ✅ FIX 1: Flatten client name so frontend can read i.clientName
+        clientName: inv.client?.companyName || "Unknown Client",
+        // ✅ FIX 2: Map paidAmount to 'paid' to match frontend InvoiceRow type
+        paid: paidAmount,
         balance,
         isOverdue,
       };
