@@ -18,6 +18,15 @@ import { IconEye, IconPencil, IconPlus, IconSearch } from "../components/icons";
 
 const LIMIT = 10;
 
+// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
+const getArr = <T,>(d: unknown): T[] => {
+  if (Array.isArray(d)) return d as T[];
+  if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
+    return (d as Record<string, unknown>).data as T[];
+  }
+  return [];
+};
+
 const ticketSchema = z.object({
   clientId: z.string().min(1, "Select a client"),
   subject: z.string().min(5, "Subject is required (min 5 characters)"),
@@ -45,9 +54,7 @@ export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onCl
   const mutation = useMutation({
     mutationFn: (form: TicketForm) => (ticket ? api.put(`/tickets/${ticket.id}`, form) : api.post("/tickets", form)),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["tickets"] });
-      void qc.invalidateQueries({ queryKey: ["ticket"] });
-      void qc.invalidateQueries({ queryKey: ["dash"] });
+      void qc.invalidateQueries({ queryKey: ["tickets", "ticket", "dash"] });
       toast.push("success", ticket ? "Ticket updated" : "Ticket created", ticket?.ref);
       onClose();
     },
@@ -56,47 +63,31 @@ export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onCl
 
   return (
     <Modal open={open} onClose={onClose} title={ticket ? `Edit ${ticket.ref}` : "New support ticket"} sub="Module F · SLA clock starts at creation (SRS F.5)" width="max-w-xl"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
-            {ticket ? "Save changes" : "Create ticket"}
-          </Button>
-        </>
-      }>
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>{ticket ? "Save changes" : "Create ticket"}</Button>
+      </>}>
       <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
         <Field label="Client" required error={errors.clientId?.message}>
           <Select error={!!errors.clientId} {...register("clientId")}>
             <option value="">Select client…</option>
-            {(clientsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+            {getArr(clientsQ.data).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
           </Select>
         </Field>
         <Field label="Assigned to">
           <Select {...register("assignedToId")}>
             <option value="">Unassigned</option>
-            {(usersQ.data ?? []).filter((u) => u.isActive).map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
+            {getArr(usersQ.data).filter((u: any) => u.isActive).map((u: any) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
           </Select>
         </Field>
         <div className="col-span-2">
-          <Field label="Subject" required error={errors.subject?.message}>
-            <TextInput error={!!errors.subject} placeholder="Short summary of the issue" {...register("subject")} />
-          </Field>
+          <Field label="Subject" required error={errors.subject?.message}><TextInput error={!!errors.subject} placeholder="Short summary of the issue" {...register("subject")} /></Field>
         </div>
         <div className="col-span-2">
-          <Field label="Description" required error={errors.description?.message}>
-            <Textarea error={!!errors.description} placeholder="Steps to reproduce, impact, environment…" {...register("description")} />
-          </Field>
+          <Field label="Description" required error={errors.description?.message}><Textarea error={!!errors.description} placeholder="Steps to reproduce, impact, environment…" {...register("description")} /></Field>
         </div>
-        <Field label="Priority" required>
-          <Select {...register("priority")}>
-            {TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-          </Select>
-        </Field>
-        <Field label="Status" required>
-          <Select {...register("status")}>
-            {TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}
-          </Select>
-        </Field>
+        <Field label="Priority" required><Select {...register("priority")}>{TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}</Select></Field>
+        <Field label="Status" required><Select {...register("status")}>{TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}</Select></Field>
         <button type="submit" className="hidden" />
       </form>
     </Modal>
@@ -107,7 +98,6 @@ export default function SupportTicketsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const manage = can(user?.role, "tickets.manage");
-
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -115,7 +105,6 @@ export default function SupportTicketsPage() {
   const [clientId, setClientId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const debouncedSearch = useDebounced(search, 300);
-
   const [formTicket, setFormTicket] = useState<TicketRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
 
@@ -123,34 +112,21 @@ export default function SupportTicketsPage() {
 
   const clientsQ = useClientsOptions();
   const usersQ = useUsersQuery();
-
   const ticketsQ = useQuery({
     queryKey: ["tickets", page, debouncedSearch, status, priority, clientId, assignedTo],
-    queryFn: async () =>
-      (await api.get<ListResponse<TicketRow>>("/tickets", {
-        params: {
-          page, limit: LIMIT, status: status || undefined, priority: priority || undefined,
-          clientId: clientId || undefined, assignedTo: assignedTo || undefined, search: debouncedSearch || undefined,
-        },
-      })).data,
+    queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", {
+      params: { page, limit: LIMIT, status: status || undefined, priority: priority || undefined, clientId: clientId || undefined, assignedTo: assignedTo || undefined, search: debouncedSearch || undefined },
+    })).data,
     placeholderData: (prev) => prev,
   });
 
-  const rows = ticketsQ.data?.data ?? [];
+  const rows = getArr<TicketRow>(ticketsQ.data);
   const total = ticketsQ.data?.total ?? 0;
 
   return (
     <div>
-      <PageHeader
-        title="Support Tickets"
-        desc="Module F — SLA-bound ticket queue with time tracking. Critical: 2h first response / 8h resolution."
-        actions={manage && (
-          <Button onClick={() => { setFormTicket(null); setFormOpen(true); }}>
-            <IconPlus width={15} height={15} /> New ticket
-          </Button>
-        )}
-      />
-
+      <PageHeader title="Support Tickets" desc="Module F — SLA-bound ticket queue with time tracking. Critical: 2h first response / 8h resolution."
+        actions={manage && <Button onClick={() => { setFormTicket(null); setFormOpen(true); }}><IconPlus width={15} height={15} /> New ticket</Button>} />
       <Card pad={false} className="animate-fade-up">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-line/70 px-4 py-3">
           <div className="relative min-w-[200px] flex-1">
@@ -158,23 +134,20 @@ export default function SupportTicketsPage() {
             <TextInput placeholder="Search subject or ref (TK-…)…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-[140px]">
-            <option value="">All statuses</option>
-            {TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            <option value="">All statuses</option>{TICKET_STATUSES.map((s) => <option key={s}>{s}</option>)}
           </Select>
           <Select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-[140px]">
-            <option value="">All priorities</option>
-            {TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+            <option value="">All priorities</option>{TICKET_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
           </Select>
           <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-[180px]">
             <option value="">All clients</option>
-            {(clientsQ.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+            {getArr(clientsQ.data).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
           </Select>
           <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-[160px]">
             <option value="">Anyone</option>
-            {(usersQ.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {getArr(usersQ.data).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </Select>
         </div>
-
         {ticketsQ.isError ? (
           <ErrorState message={apiErrorMsg(ticketsQ.error)} onRetry={() => ticketsQ.refetch()} />
         ) : ticketsQ.isPending ? (
@@ -183,13 +156,7 @@ export default function SupportTicketsPage() {
           <EmptyState title="No tickets found" hint="Adjust filters or open a new ticket."
             action={manage ? <Button size="sm" onClick={() => { setFormTicket(null); setFormOpen(true); }}><IconPlus width={14} height={14} /> New ticket</Button> : undefined} />
         ) : (
-          <Table minWidth="min-w-[980px]"
-            head={
-              <>
-                <Th>Ref</Th><Th>Subject</Th><Th>Client</Th><Th>Priority</Th><Th>Status</Th>
-                <Th>Assigned</Th><Th className="text-right">Time</Th><Th>Created</Th><Th className="text-right">Actions</Th>
-              </>
-            }>
+          <Table minWidth="min-w-[980px]" head={<><Th>Ref</Th><Th>Subject</Th><Th>Client</Th><Th>Priority</Th><Th>Status</Th><Th>Assigned</Th><Th className="text-right">Time</Th><Th>Created</Th><Th className="text-right">Actions</Th></>}>
             {rows.map((t) => (
               <tr key={t.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/tickets/${t.id}`)}>
                 <Td className="font-mono text-[12.5px] font-bold text-brand-800">{t.ref}</Td>
@@ -203,21 +170,15 @@ export default function SupportTicketsPage() {
                 <Td className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <Button variant="ghost" size="xs" title="Open ticket" onClick={() => navigate(`/tickets/${t.id}`)}><IconEye width={13} height={13} /></Button>
-                    {manage && (
-                      <Button variant="ghost" size="xs" title="Edit" onClick={() => { setFormTicket(t); setFormOpen(true); }}>
-                        <IconPencil width={13} height={13} />
-                      </Button>
-                    )}
+                    {manage && <Button variant="ghost" size="xs" title="Edit" onClick={() => { setFormTicket(t); setFormOpen(true); }}><IconPencil width={13} height={13} /></Button>}
                   </div>
                 </Td>
               </tr>
             ))}
           </Table>
         )}
-
         {!ticketsQ.isPending && total > 0 && <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />}
       </Card>
-
       <TicketFormModal open={formOpen} onClose={() => setFormOpen(false)} ticket={formTicket} />
     </div>
   );

@@ -7,7 +7,7 @@ import { z } from "zod";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { can, fmtMoney, useDebounced, useUsersQuery } from "../lib/utils";
-import type { ClientRow, ListResponse } from "../types";
+import type { ClientRow, ListResponse, User } from "../types"; // ✅ Added User here
 import { CLIENT_STATUSES, HOSTING_CYCLES, INDUSTRIES } from "../types";
 import {
   apiErrorMsg, Badge, Button, Card, clientTone, ConfirmModal, EmptyState, ErrorState, Field,
@@ -17,6 +17,15 @@ import { PageHeader } from "../components/Layout";
 import { IconEye, IconPencil, IconPlus, IconSearch, IconTrash } from "../components/icons";
 
 const LIMIT = 10;
+
+// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
+const getArr = <T,>(d: unknown): T[] => {
+  if (Array.isArray(d)) return d as T[];
+  if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
+    return (d as Record<string, unknown>).data as T[];
+  }
+  return [];
+};
 
 const clientSchema = z.object({
   companyName: z.string().min(2, "Company name is required"),
@@ -29,7 +38,7 @@ const clientSchema = z.object({
   hostingFeeAmount: z.coerce.number().min(0),
   hostingCycle: z.enum(["Monthly", "Quarterly", "Annual"]),
 });
-export type ClientForm = z.infer<typeof clientSchema>;
+type ClientForm = z.infer<typeof clientSchema>;
 
 export function ClientFormModal({ open, onClose, client }: { open: boolean; onClose: () => void; client: ClientRow | null }) {
   const toast = useToast();
@@ -39,40 +48,52 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
 
   useEffect(() => {
     if (!open) return;
-    reset(client
-      ? {
-          companyName: client.companyName, taxId: client.taxId, billingAddress: client.billingAddress,
-          industryType: client.industryType, status: client.status, accountOwnerId: client.accountOwnerId,
-          taxRatePct: client.taxRatePct, hostingFeeAmount: client.hostingFeeAmount, hostingCycle: client.hostingCycle,
-        }
-      : {
-          companyName: "", taxId: "", billingAddress: "", industryType: "Other", status: "Prospect",
-          accountOwnerId: usersQ.data?.[0]?.id ?? "", taxRatePct: 15, hostingFeeAmount: 0, hostingCycle: "Monthly",
-        });
+    if (client) {
+      reset({ 
+        companyName: client.companyName, 
+        taxId: client.taxId, 
+        billingAddress: client.billingAddress, 
+        industryType: client.industryType, 
+        status: client.status, 
+        accountOwnerId: client.accountOwnerId, 
+        taxRatePct: client.taxRatePct, 
+        hostingFeeAmount: client.hostingFeeAmount, 
+        hostingCycle: client.hostingCycle 
+      });
+    } else {
+      reset({ 
+        companyName: "", 
+        taxId: "", 
+        billingAddress: "", 
+        industryType: "Other", 
+        status: "Prospect", 
+        // ✅ Explicitly typed as User so TypeScript knows .id exists
+        accountOwnerId: getArr<User>(usersQ.data)[0]?.id ?? "", 
+        taxRatePct: 15, 
+        hostingFeeAmount: 0, 
+        hostingCycle: "Monthly" 
+      });
+    }
   }, [open, client, reset, usersQ.data]);
 
   const mutation = useMutation({
-    mutationFn: (form: ClientForm) => (client ? api.put(`/clients/${client.id}`, form) : api.post("/clients", form)),
+    mutationFn: (form: ClientForm) => client && client.id ? api.put(`/clients/${client.id}`, form) : api.post("/clients", form),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["clients"] });
-      void qc.invalidateQueries({ queryKey: ["client"] });
-      void qc.invalidateQueries({ queryKey: ["dash"] });
+      void qc.invalidateQueries({ queryKey: ["clients", "client", "dash"] });
       toast.push("success", client ? "Client updated" : "Client created", client?.companyName);
       onClose();
     },
     onError: (e) => toast.push("error", "Save failed", apiErrorMsg(e)),
   });
 
+  if (!client && !open) return null;
+
   return (
     <Modal open={open} onClose={onClose} title={client ? `Edit — ${client.companyName}` : "New client"} sub="Module B · company record & recurring fee profile" width="max-w-xl"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>
-            {client ? "Save changes" : "Create client"}
-          </Button>
-        </>
-      }>
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>{client ? "Save changes" : "Create client"}</Button>
+      </>}>
       <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
         <Field label="Company name" required error={errors.companyName?.message}>
           <TextInput error={!!errors.companyName} placeholder="Acme Industries" {...register("companyName")} />
@@ -86,18 +107,17 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
           </Field>
         </div>
         <Field label="Industry" required error={errors.industryType?.message}>
-          <Select {...register("industryType")}>
-            {INDUSTRIES.map((i) => <option key={i}>{i}</option>)}
-          </Select>
+          <Select {...register("industryType")}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select>
         </Field>
         <Field label="Status" required>
-          <Select {...register("status")}>
-            {CLIENT_STATUSES.map((s) => <option key={s}>{s}</option>)}
-          </Select>
+          <Select {...register("status")}>{CLIENT_STATUSES.map((s) => <option key={s}>{s}</option>)}</Select>
         </Field>
         <Field label="Account owner" required error={errors.accountOwnerId?.message}>
           <Select error={!!errors.accountOwnerId} {...register("accountOwnerId")}>
-            {(usersQ.data ?? []).filter((u) => u.isActive).map((u) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
+            {/* ✅ Explicitly typed as User so TypeScript knows .id, .name, and .role exist */}
+            {getArr<User>(usersQ.data).filter((u) => u.isActive).map((u) => (
+              <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Tax rate %" error={errors.taxRatePct?.message}>
@@ -107,9 +127,7 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
           <TextInput type="number" min={0} step="10" {...register("hostingFeeAmount")} />
         </Field>
         <Field label="Hosting cycle">
-          <Select {...register("hostingCycle")}>
-            {HOSTING_CYCLES.map((c) => <option key={c}>{c}</option>)}
-          </Select>
+          <Select {...register("hostingCycle")}>{HOSTING_CYCLES.map((c) => <option key={c}>{c}</option>)}</Select>
         </Field>
         <button type="submit" className="hidden" />
       </form>
@@ -121,13 +139,11 @@ export default function ClientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const manage = can(user?.role, "clients.manage");
-
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [industry, setIndustry] = useState("");
   const debouncedSearch = useDebounced(search, 300);
-
   const [formClient, setFormClient] = useState<ClientRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null);
@@ -136,10 +152,9 @@ export default function ClientsPage() {
 
   const clientsQ = useQuery({
     queryKey: ["clients", page, debouncedSearch, status, industry],
-    queryFn: async () =>
-      (await api.get<ListResponse<ClientRow>>("/clients", {
-        params: { page, limit: LIMIT, search: debouncedSearch || undefined, status: status || undefined, industry: industry || undefined },
-      })).data,
+    queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", {
+      params: { page, limit: LIMIT, search: debouncedSearch || undefined, status: status || undefined, industry: industry || undefined },
+    })).data,
     placeholderData: (prev) => prev,
   });
 
@@ -148,29 +163,20 @@ export default function ClientsPage() {
   const deleteMutation = useMutation({
     mutationFn: (c: ClientRow) => api.delete(`/clients/${c.id}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["clients"] });
-      void qc.invalidateQueries({ queryKey: ["dash"] });
+      void qc.invalidateQueries({ queryKey: ["clients", "dash"] });
       toast.push("success", "Client deactivated", `${deleteTarget?.companyName} was soft-deleted (SRS B.6).`);
       setDeleteTarget(null);
     },
     onError: (e) => toast.push("error", "Delete failed", apiErrorMsg(e)),
   });
 
-  const rows = clientsQ.data?.data ?? [];
+  const rows = getArr<ClientRow>(clientsQ.data);
   const total = clientsQ.data?.total ?? 0;
 
   return (
     <div>
-      <PageHeader
-        title="Clients & Companies"
-        desc="Module B — company records, contacts, recurring hosting fees and account ownership."
-        actions={manage && (
-          <Button onClick={() => { setFormClient(null); setFormOpen(true); }}>
-            <IconPlus width={15} height={15} /> New client
-          </Button>
-        )}
-      />
-
+      <PageHeader title="Clients & Companies" desc="Module B — company records, contacts, recurring hosting fees and account ownership."
+        actions={manage && <Button onClick={() => { setFormClient(null); setFormOpen(true); }}><IconPlus width={15} height={15} /> New client</Button>} />
       <Card pad={false} className="animate-fade-up">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-line/70 px-4 py-3">
           <div className="relative min-w-[220px] flex-1">
@@ -178,15 +184,12 @@ export default function ClientsPage() {
             <TextInput placeholder="Search company or tax ID…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-[150px]">
-            <option value="">All statuses</option>
-            {CLIENT_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            <option value="">All statuses</option>{CLIENT_STATUSES.map((s) => <option key={s}>{s}</option>)}
           </Select>
           <Select value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-[180px]">
-            <option value="">All industries</option>
-            {INDUSTRIES.map((i) => <option key={i}>{i}</option>)}
+            <option value="">All industries</option>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}
           </Select>
         </div>
-
         {clientsQ.isError ? (
           <ErrorState message={apiErrorMsg(clientsQ.error)} onRetry={() => clientsQ.refetch()} />
         ) : clientsQ.isPending ? (
@@ -194,68 +197,34 @@ export default function ClientsPage() {
         ) : rows.length === 0 ? (
           <EmptyState title="No clients found" hint="Try different filters, or create the first client record." />
         ) : (
-          <Table
-            head={
-              <>
-                <Th>Company</Th><Th>Status</Th><Th>Account owner</Th><Th>Industry</Th>
-                <Th className="text-right">Contacts</Th><Th className="text-right">Licenses</Th>
-                <Th className="text-right">Hosting</Th><Th className="text-right">Actions</Th>
-              </>
-            }>
+          <Table head={<><Th>Company</Th><Th>Status</Th><Th>Account owner</Th><Th>Industry</Th><Th className="text-right">Contacts</Th><Th className="text-right">Licenses</Th><Th className="text-right">Hosting</Th><Th className="text-right">Actions</Th></>}>
             {rows.map((c) => (
               <tr key={c.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/clients/${c.id}`)}>
-                <Td>
-                  <p className="font-bold group-hover:text-brand-800">{c.companyName}</p>
-                  <p className="font-mono text-[11.5px] text-mute">{c.taxId || "no tax ID"}</p>
-                </Td>
+                <Td><p className="font-bold group-hover:text-brand-800">{c.companyName}</p><p className="font-mono text-[11.5px] text-mute">{c.taxId || "no tax ID"}</p></Td>
                 <Td><Badge tone={clientTone(c.status)} dot>{c.status}</Badge></Td>
                 <Td className="font-medium">{c.ownerName}</Td>
                 <Td className="text-mute">{c.industryType}</Td>
                 <Td className="text-right"><span className="tnum font-mono font-semibold">{c.contactsCount}</span></Td>
                 <Td className="text-right"><span className="tnum font-mono font-semibold">{c.licensesCount}</span></Td>
                 <Td className="text-right">
-                  {c.hostingFeeAmount > 0
-                    ? <span className="tnum font-mono font-semibold">{fmtMoney(c.hostingFeeAmount)}<span className="text-[11px] text-mute">/{c.hostingCycle.toLowerCase().slice(0, 2) === "mo" ? "mo" : c.hostingCycle === "Quarterly" ? "qtr" : "yr"}</span></span>
-                    : <span className="text-mute">—</span>}
+                  {c.hostingFeeAmount > 0 ? <span className="tnum font-mono font-semibold">{fmtMoney(c.hostingFeeAmount)}<span className="text-[11px] text-mute">/{c.hostingCycle.toLowerCase().slice(0, 2) === "mo" ? "mo" : c.hostingCycle === "Quarterly" ? "qtr" : "yr"}</span></span> : <span className="text-mute">—</span>}
                 </Td>
                 <Td className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <Link to={`/clients/${c.id}`}><Button variant="ghost" size="xs" title="Open profile"><IconEye width={13} height={13} /></Button></Link>
-                    {manage && (
-                      <Button variant="ghost" size="xs" title="Edit client" onClick={() => { setFormClient(c); setFormOpen(true); }}>
-                        <IconPencil width={13} height={13} />
-                      </Button>
-                    )}
-                    {can(user?.role, "clients.delete") && (
-                      <Button variant="ghost" size="xs" title="Soft delete" className="hover:text-rose-700" onClick={() => setDeleteTarget(c)}>
-                        <IconTrash width={13} height={13} />
-                      </Button>
-                    )}
+                    {manage && <Button variant="ghost" size="xs" title="Edit client" onClick={() => { setFormClient(c); setFormOpen(true); }}><IconPencil width={13} height={13} /></Button>}
+                    {can(user?.role, "clients.delete") && <Button variant="ghost" size="xs" title="Soft delete" className="hover:text-rose-700" onClick={() => setDeleteTarget(c)}><IconTrash width={13} height={13} /></Button>}
                   </div>
                 </Td>
               </tr>
             ))}
           </Table>
         )}
-
         {!clientsQ.isPending && total > 0 && <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />}
       </Card>
-
       <ClientFormModal open={formOpen} onClose={() => setFormOpen(false)} client={formClient} />
-      <ConfirmModal
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Soft-delete client?"
-        confirmLabel="Delete client"
-        loading={deleteMutation.isPending}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
-        body={
-          <>
-            <strong>{deleteTarget?.companyName}</strong> will be marked as deleted. Financial history is preserved for
-            audit purposes (SRS B.6 / Module I) and the record stays restorable by an administrator.
-          </>
-        }
-      />
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Soft-delete client?" confirmLabel="Delete client" loading={deleteMutation.isPending} onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+        body={<><strong>{deleteTarget?.companyName}</strong> will be marked as deleted. Financial history is preserved for audit purposes (SRS B.6 / Module I) and the record stays restorable by an administrator.</>} />
     </div>
   );
 }
