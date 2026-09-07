@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, forwardRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TdHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconRefresh, IconSpinner, IconX } from "./icons";
 
@@ -122,20 +122,40 @@ export const inputCls = (error?: boolean) =>
     error ? "border-rose-400 focus:ring-rose-200" : "border-line focus:border-brand-500 focus:ring-brand-100"
   }`;
 
-export function TextInput({ error, className = "", ...rest }: InputHTMLAttributes<HTMLInputElement> & { error?: boolean }) {
-  return <input {...rest} className={`${inputCls(error)} ${className}`} />;
-}
-export function Select({ error, className = "", children, ...rest }: SelectHTMLAttributes<HTMLSelectElement> & { error?: boolean }) {
-  return (
-    <select {...rest} className={`${inputCls(error)} appearance-none bg-no-repeat pr-8 ${className}`}
-      style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235d7378' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9.5 6 6 6-6'/%3E%3C/svg%3E\")", backgroundPosition: "right 10px center" }}>
-      {children}
-    </select>
-  );
-}
-export function Textarea({ error, className = "", ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { error?: boolean }) {
-  return <textarea {...rest} className={`${inputCls(error)} h-auto min-h-[84px] py-2 ${className}`} />;
-}
+// ✅ FIXED: Wrapped in forwardRef so react-hook-form can attach refs
+export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { error?: boolean }>(
+  ({ error, className = "", ...rest }, ref) => {
+    return <input ref={ref} {...rest} className={`${inputCls(error)} ${className}`} />;
+  }
+);
+TextInput.displayName = "TextInput";
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & { error?: boolean }>(
+  ({ error, className = "", children, ...rest }, ref) => {
+    return (
+      <select
+        ref={ref}
+        {...rest}
+        className={`${inputCls(error)} appearance-none bg-no-repeat pr-8 ${className}`}
+        style={{
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235d7378' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9.5 6 6 6-6'/%3E%3C/svg%3E\")",
+          backgroundPosition: "right 10px center",
+        }}
+      >
+        {children}
+      </select>
+    );
+  }
+);
+Select.displayName = "Select";
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { error?: boolean }>(
+  ({ error, className = "", ...rest }, ref) => {
+    return <textarea ref={ref} {...rest} className={`${inputCls(error)} h-auto min-h-[84px] py-2 ${className}`} />;
+  }
+);
+Textarea.displayName = "Textarea";
+
 export function Checkbox({ label, checked, onChange, error }: { label: string; checked: boolean; onChange: (v: boolean) => void; error?: boolean }) {
   return (
     <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 h-9 text-sm font-medium transition-colors ${error ? "border-rose-400" : "border-line"} ${checked ? "bg-brand-50 border-brand-300 text-brand-900" : "bg-card text-ink hover:border-brand-300"}`}>

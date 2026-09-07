@@ -47,6 +47,7 @@ enum LeadSource {
   Referral
   Website
   Outbound
+  ColdCall
 }
 
 enum LicenseType {
