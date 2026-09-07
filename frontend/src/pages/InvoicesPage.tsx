@@ -64,17 +64,16 @@ function InvoiceFormModal({ open, onClose, invoice, presetClientId }: { open: bo
       return invoice ? api.put(`/invoices/${invoice.id}`, payload) : api.post("/invoices", payload);
     },
     onSuccess: () => {
-      // ✅ FIXED: Separate invalidation calls
       void qc.invalidateQueries({ queryKey: ["invoices"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
-      toast.push("success", invoice ? "Invoice updated" : "Invoice created", invoice?.number);
+      toast.push("success", invoice ? "Invoice updated" : "Invoice created", invoice?.invoiceNumber);
       onClose();
     },
     onError: (e) => toast.push("error", "Save failed", apiErrorMsg(e)),
   });
 
   return (
-    <Modal open={open} onClose={onClose} title={invoice ? `Edit ${invoice.number}` : "New invoice"} sub="Module D · tax and totals are computed automatically" width="max-w-2xl"
+    <Modal open={open} onClose={onClose} title={invoice ? `Edit ${invoice.invoiceNumber}` : "New invoice"} sub="Module D · tax and totals are computed automatically" width="max-w-2xl"
       footer={<>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>{invoice ? "Save changes" : "Create invoice"}</Button>
@@ -156,10 +155,9 @@ export default function InvoicesPage() {
   const deleteMutation = useMutation({
     mutationFn: (i: InvoiceRow) => api.delete(`/invoices/${i.id}`),
     onSuccess: () => {
-      // ✅ FIXED: Separate invalidation calls
       void qc.invalidateQueries({ queryKey: ["invoices"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
-      toast.push("success", "Invoice voided", `${deleteTarget?.number} was soft-deleted (Module I log entry created).`);
+      toast.push("success", "Invoice voided", `${deleteTarget?.invoiceNumber} was soft-deleted (Module I log entry created).`);
       setDeleteTarget(null);
     },
     onError: (e) => toast.push("error", "Delete failed", apiErrorMsg(e)),
@@ -199,7 +197,8 @@ export default function InvoicesPage() {
           <Table minWidth="min-w-[1060px]" head={<><Th>Invoice</Th><Th>Client</Th><Th>Issued</Th><Th>Due</Th><Th className="text-right">Subtotal</Th><Th className="text-right">Tax</Th><Th className="text-right">Total</Th><Th className="text-right">Paid</Th><Th className="text-right">Balance</Th><Th>Status</Th><Th className="text-right">Actions</Th></>}>
             {rows.map((i) => (
               <tr key={i.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/invoices/${i.id}`)}>
-                <Td className="font-mono font-bold group-hover:text-brand-800">{i.number}</Td>
+                {/* ✅ FIXED: Changed i.number to i.invoiceNumber */}
+                <Td className="font-mono font-bold group-hover:text-brand-800">{i.invoiceNumber}</Td>
                 <Td className="font-medium">{i.clientName}</Td>
                 <Td className="text-mute">{fmtDate(i.issueDate)}</Td>
                 <Td className="text-mute">{fmtDate(i.dueDate)}</Td>
@@ -224,7 +223,7 @@ export default function InvoicesPage() {
       </Card>
       <InvoiceFormModal open={formOpen} onClose={() => setFormOpen(false)} invoice={formInvoice} presetClientId={presetClientId} />
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Void invoice?" confirmLabel="Void invoice" loading={deleteMutation.isPending} onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
-        body={<><strong>{deleteTarget?.number}</strong> ({deleteTarget && fmtMoney(deleteTarget.totalAmount)}) will be voided. Per Module I, financial records are never hard-deleted — an immutable audit entry records this action.<span className="mt-1 block text-[12px] text-mute">Today: {fmtDate(todayISO())}</span></>} />
+        body={<><strong>{deleteTarget?.invoiceNumber}</strong> ({deleteTarget && fmtMoney(deleteTarget.totalAmount)}) will be voided. Per Module I, financial records are never hard-deleted — an immutable audit entry records this action.<span className="mt-1 block text-[12px] text-mute">Today: {fmtDate(todayISO())}</span></>} />
     </div>
   );
 }

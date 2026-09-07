@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Hint: Remember to append url = env("DATABASE_URL") and directUrl = env("DIRECT_URL") here if updating on Render!
 }
 
 enum Role {
@@ -104,8 +105,8 @@ model User {
   clients         Client[]     @relation("AccountOwner")
   payments        Payment[]
   creditNotes     CreditNote[]
-  assignedTickets Ticket[]     // Added back-relation field
-  timeLogs        TimeLog[]    // Added back-relation field
+  assignedTickets Ticket[]     
+  timeLogs        TimeLog[]    
 }
 
 model AuditLog {
@@ -147,7 +148,7 @@ model Client {
   contacts        Contact[]
   licenses        License[]
   invoices        Invoice[]
-  tickets         Ticket[]     // Added back-relation field
+  tickets         Ticket[]     
 
   @@index([companyName])
 }
@@ -217,11 +218,24 @@ model Invoice {
   updatedAt     DateTime      @updatedAt
 
   client        Client        @relation(fields: [clientId], references: [id])
+  items         InvoiceItem[] // 👈 Added back-relation for items
   payments      Payment[]
   creditNotes   CreditNote[]
 
   @@index([clientId])
   @@index([dueDate])
+}
+
+// ── Added InvoiceItem model ──
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  qty         Float
+  unitPrice   Float
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@index([invoiceId])
 }
 
 model Payment {
@@ -253,7 +267,6 @@ model CreditNote {
   createdBy   User       @relation(fields: [createdById], references: [id])
 }
 
-// Module F — Support Tickets & Activity
 model Ticket {
   id              String          @id @default(cuid())
   ref             String          @unique

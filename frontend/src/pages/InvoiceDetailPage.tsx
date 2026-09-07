@@ -54,14 +54,14 @@ function PaymentModal({ open, onClose, bundle }: { open: boolean; onClose: () =>
       void qc.invalidateQueries({ queryKey: ["invoices"] });
       void qc.invalidateQueries({ queryKey: ["client"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
-      toast.push("success", "Payment recorded", `${bundle.invoice.number} status recalculated automatically.`);
+      toast.push("success", "Payment recorded", `${bundle.invoice.invoiceNumber} status recalculated automatically.`);
       onClose();
     },
     onError: (e) => toast.push("error", "Payment failed", apiErrorMsg(e)),
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Record payment" sub={`${bundle.invoice.number} · outstanding balance ${fmtMoney(balance)}`}
+    <Modal open={open} onClose={onClose} title="Record payment" sub={`${bundle.invoice.invoiceNumber} · outstanding balance ${fmtMoney(balance)}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -131,7 +131,7 @@ function CreditNoteModal({ open, onClose, bundle }: { open: boolean; onClose: ()
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Issue credit note" sub={`${bundle.invoice.number} · credit reduces the outstanding balance`}
+    <Modal open={open} onClose={onClose} title="Issue credit note" sub={`${bundle.invoice.invoiceNumber} · credit reduces the outstanding balance`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -166,7 +166,6 @@ export default function InvoiceDetailPage() {
     queryKey: ["invoice", id],
     queryFn: async () => {
       const res = await api.get<InvoiceBundle>(`/invoices/${id}`);
-      // ✅ FIXED: Safely unwrap the response in case the backend returns { success: true, data: { invoice, client, ... } }
       return (res.data as any)?.data ?? res.data;
     },
   });
@@ -175,7 +174,7 @@ export default function InvoiceDetailPage() {
     setSoaBusy(true);
     try {
       const res = await api.get(`/invoices/${id}/soa`, { responseType: "blob" });
-      downloadBlob(`SoA-${bundleQ.data?.invoice.number ?? id}.pdf`, res.data as Blob);
+      downloadBlob(`SoA-${bundleQ.data?.invoice.invoiceNumber ?? id}.pdf`, res.data as Blob);
       toast.push("success", "Statement downloaded", "PDF generated from live ledger data.");
     } catch (e) {
       toast.push("error", "Download failed", apiErrorMsg(e));
@@ -188,7 +187,6 @@ export default function InvoiceDetailPage() {
   
   const bundle = bundleQ.data as InvoiceBundle | undefined;
   
-  // ✅ FIXED: Safely check if bundle and invoice exist before destructuring
   if (!bundle || !bundle.invoice) {
     return (
       <div className="space-y-4">
@@ -213,7 +211,8 @@ export default function InvoiceDetailPage() {
       id: `c-${c.id}`, kind: "credit" as const, title: `Credit note — ${fmtMoney(c.amount)}`,
       detail: `${c.reason} · by ${c.createdByName ?? "—"}`, at: c.createdAt,
     })),
-    { id: `i-${invoice.id}`, kind: "invoice" as const, title: `Invoice ${invoice.number} issued`, detail: `Total ${fmtMoney(invoice.totalAmount)} · due ${fmtDate(invoice.dueDate)}`, at: invoice.createdAt },
+    // ✅ FIXED: Changed invoice.number to invoice.invoiceNumber
+    { id: `i-${invoice.id}`, kind: "invoice" as const, title: `Invoice ${invoice.invoiceNumber} issued`, detail: `Total ${fmtMoney(invoice.totalAmount)} · due ${fmtDate(invoice.dueDate)}`, at: invoice.createdAt },
   ].sort((a, b) => b.at.localeCompare(a.at));
 
   return (
@@ -222,12 +221,12 @@ export default function InvoiceDetailPage() {
         <IconChevronLeft width={14} height={14} /> All invoices
       </button>
 
-      {/* ── Header ── */}
       <div className="rounded-xl border border-line bg-card p-6 animate-fade-up">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-mono text-[26px] font-extrabold tracking-tight">{invoice.number}</h1>
+              {/* ✅ FIXED: Changed invoice.number to invoice.invoiceNumber */}
+              <h1 className="font-mono text-[26px] font-extrabold tracking-tight">{invoice.invoiceNumber}</h1>
               <Badge tone={invoiceTone(invoice.status)} dot>{invoice.status}</Badge>
               {overdue && <Badge tone="red">{daysOverdue(invoice.dueDate)} days overdue</Badge>}
             </div>
@@ -251,7 +250,6 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
 
-        {/* Totals strip */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
             { label: "Subtotal", value: fmtMoney(invoice.subtotal) },
@@ -270,7 +268,6 @@ export default function InvoiceDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          {/* Line items */}
           <Card title="Line items" pad={false} className="animate-fade-up">
             <Table minWidth="min-w-[520px]"
               head={<><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Unit price</Th><Th className="text-right">Amount</Th></>}>
@@ -289,7 +286,6 @@ export default function InvoiceDetailPage() {
             </Table>
           </Card>
 
-          {/* Payments */}
           <Card title="Payments" sub={`${payments.length} recorded`} pad={false} className="animate-fade-up"
             actions={manage && invoice.balance > 0.001 && (
               <Button size="xs" variant="subtle" onClick={() => setPaymentOpen(true)}><IconCard width={12} height={12} /> Record</Button>
@@ -315,7 +311,6 @@ export default function InvoiceDetailPage() {
         </div>
 
         <div className="space-y-4">
-          {/* Credit notes */}
           <Card title="Credit notes" pad={false} className="animate-fade-up">
             {creditNotes.length === 0 ? (
               <p className="px-5 py-6 text-center text-[13px] text-mute">None issued.</p>
@@ -334,7 +329,6 @@ export default function InvoiceDetailPage() {
             )}
           </Card>
 
-          {/* Billing address */}
           {client && (
             <Card title="Billed to" className="animate-fade-up">
               <p className="text-[14px] font-bold">{client.companyName}</p>
@@ -344,7 +338,6 @@ export default function InvoiceDetailPage() {
             </Card>
           )}
 
-          {/* Timeline */}
           <Card title="Ledger timeline" sub="Immutable sequence (Module I)" className="animate-fade-up">
             <Timeline items={timeline} />
           </Card>
@@ -355,4 +348,4 @@ export default function InvoiceDetailPage() {
       <CreditNoteModal open={creditOpen} onClose={() => setCreditOpen(false)} bundle={bundle} />
     </div>
   );
-}
+} 

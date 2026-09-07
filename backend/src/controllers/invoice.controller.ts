@@ -99,6 +99,7 @@ export async function getInvoice(req: Request, res: Response): Promise<void> {
       client: true,
       payments: true,
       creditNotes: true,
+      items: true, // ✅ Add this
     },
   });
 

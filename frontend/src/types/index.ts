@@ -124,6 +124,7 @@ export interface Invoice {
 }
 
 export interface InvoiceRow extends Invoice {
+  invoiceNumber: string;
   clientName: string;
   paid: number;
   credits: number;
