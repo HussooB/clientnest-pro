@@ -5,7 +5,7 @@ import type { User } from "../types";
 
 interface AuthState {
   user: User | null;
-  loggingIn: boolean;
+  isLoading: boolean; // ✅ Exposed to prevent flash of login
   login: (email: string, password: string) => Promise<User>;
   logout: () => void;
 }
@@ -14,14 +14,14 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [initializing, setInitializing] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     ;(async () => {
       const token = getToken();
       if (!token) {
-        if (alive) setInitializing(false);
+        if (alive) setIsLoading(false);
         return;
       }
       try {
@@ -30,37 +30,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(response.data.data.user);
         }
       } catch {
-        // If /auth/me fails, don't clear the token — let the
-        // API response interceptor handle 401 redirects. Just
-        // mark initializing as complete so the UI proceeds.
+        // If /auth/me fails, don't clear the token — let the API interceptor handle 401.
       } finally {
-        if (alive) setInitializing(false);
+        if (alive) setIsLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    setInitializing(true);
+    setIsLoading(true);
     try {
-      const response = await api.post<{
-        success: boolean;
-        data: { token: string; user: User };
-        message?: string;
-      }>("/auth/login", { email, password });
-
+      const response = await api.post<{ success: boolean; data: { token: string; user: User }; message?: string }>("/auth/login", { email, password });
       if (response.data.success && response.data.data) {
         setToken(response.data.data.token);
         setUser(response.data.data.user);
         return response.data.data.user;
       }
       throw new Error(response.data.message || "Login failed");
-    } catch (err) {
-      throw err;
     } finally {
-      setInitializing(false);
+      setIsLoading(false);
     }
   }, []);
 
@@ -70,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -55,17 +55,39 @@ const TITLES: [RegExp, string][] = [
   [/^\/audit-logs/, "Audit Trail"],
 ];
 
-
-
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  if (user) return <>{children}</>;
-  return <Navigate to="/login" replace />;
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-card">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
 
 export function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }) {
-  const { user } = useAuth();
-  if (!user || !roles.includes(user.role)) return <Navigate to="/" replace />;
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-card">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+      </div>
+    );
+  }
+
+  if (!user || !roles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }
 

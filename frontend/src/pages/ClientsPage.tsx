@@ -7,7 +7,7 @@ import { z } from "zod";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { can, fmtMoney, useDebounced, useUsersQuery } from "../lib/utils";
-import type { ClientRow, ListResponse, User } from "../types"; // ✅ Added User here
+import type { ClientRow, ListResponse, User } from "../types";
 import { CLIENT_STATUSES, HOSTING_CYCLES, INDUSTRIES } from "../types";
 import {
   apiErrorMsg, Badge, Button, Card, clientTone, ConfirmModal, EmptyState, ErrorState, Field,
@@ -18,7 +18,6 @@ import { IconEye, IconPencil, IconPlus, IconSearch, IconTrash } from "../compone
 
 const LIMIT = 10;
 
-// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
 const getArr = <T,>(d: unknown): T[] => {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -49,37 +48,18 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
   useEffect(() => {
     if (!open) return;
     if (client) {
-      reset({ 
-        companyName: client.companyName, 
-        taxId: client.taxId, 
-        billingAddress: client.billingAddress, 
-        industryType: client.industryType, 
-        status: client.status, 
-        accountOwnerId: client.accountOwnerId, 
-        taxRatePct: client.taxRatePct, 
-        hostingFeeAmount: client.hostingFeeAmount, 
-        hostingCycle: client.hostingCycle 
-      });
+      reset({ companyName: client.companyName, taxId: client.taxId, billingAddress: client.billingAddress, industryType: client.industryType, status: client.status, accountOwnerId: client.accountOwnerId, taxRatePct: client.taxRatePct, hostingFeeAmount: client.hostingFeeAmount, hostingCycle: client.hostingCycle });
     } else {
-      reset({ 
-        companyName: "", 
-        taxId: "", 
-        billingAddress: "", 
-        industryType: "Other", 
-        status: "Prospect", 
-        // ✅ Explicitly typed as User so TypeScript knows .id exists
-        accountOwnerId: getArr<User>(usersQ.data)[0]?.id ?? "", 
-        taxRatePct: 15, 
-        hostingFeeAmount: 0, 
-        hostingCycle: "Monthly" 
-      });
+      reset({ companyName: "", taxId: "", billingAddress: "", industryType: "Other", status: "Prospect", accountOwnerId: getArr<User>(usersQ.data)[0]?.id ?? "", taxRatePct: 15, hostingFeeAmount: 0, hostingCycle: "Monthly" });
     }
   }, [open, client, reset, usersQ.data]);
 
   const mutation = useMutation({
     mutationFn: (form: ClientForm) => client && client.id ? api.put(`/clients/${client.id}`, form) : api.post("/clients", form),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["clients", "client", "dash"] });
+      // ✅ FIXED: Separate invalidation calls
+      void qc.invalidateQueries({ queryKey: ["clients"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", client ? "Client updated" : "Client created", client?.companyName);
       onClose();
     },
@@ -95,16 +75,10 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
         <Button loading={mutation.isPending} onClick={handleSubmit((f) => mutation.mutate(f))}>{client ? "Save changes" : "Create client"}</Button>
       </>}>
       <form className="grid grid-cols-2 gap-4" onSubmit={handleSubmit((f) => mutation.mutate(f))}>
-        <Field label="Company name" required error={errors.companyName?.message}>
-          <TextInput error={!!errors.companyName} placeholder="Acme Industries" {...register("companyName")} />
-        </Field>
-        <Field label="Tax ID" error={errors.taxId?.message}>
-          <TextInput placeholder="TX-00000000" {...register("taxId")} />
-        </Field>
+        <Field label="Company name" required error={errors.companyName?.message}><TextInput error={!!errors.companyName} placeholder="Acme Industries" {...register("companyName")} /></Field>
+        <Field label="Tax ID" error={errors.taxId?.message}><TextInput placeholder="TX-00000000" {...register("taxId")} /></Field>
         <div className="col-span-2">
-          <Field label="Billing address" error={errors.billingAddress?.message}>
-            <TextInput placeholder="Street, city, country" {...register("billingAddress")} />
-          </Field>
+          <Field label="Billing address" error={errors.billingAddress?.message}><TextInput placeholder="Street, city, country" {...register("billingAddress")} /></Field>
         </div>
         <Field label="Industry" required error={errors.industryType?.message}>
           <Select {...register("industryType")}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select>
@@ -114,18 +88,11 @@ export function ClientFormModal({ open, onClose, client }: { open: boolean; onCl
         </Field>
         <Field label="Account owner" required error={errors.accountOwnerId?.message}>
           <Select error={!!errors.accountOwnerId} {...register("accountOwnerId")}>
-            {/* ✅ Explicitly typed as User so TypeScript knows .id, .name, and .role exist */}
-            {getArr<User>(usersQ.data).filter((u) => u.isActive).map((u) => (
-              <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
-            ))}
+            {getArr<User>(usersQ.data).filter((u) => u.isActive).map((u) => (<option key={u.id} value={u.id}>{u.name} · {u.role}</option>))}
           </Select>
         </Field>
-        <Field label="Tax rate %" error={errors.taxRatePct?.message}>
-          <TextInput type="number" min={0} max={100} step="0.5" {...register("taxRatePct")} />
-        </Field>
-        <Field label="Hosting fee" hint="0 if none" error={errors.hostingFeeAmount?.message}>
-          <TextInput type="number" min={0} step="10" {...register("hostingFeeAmount")} />
-        </Field>
+        <Field label="Tax rate %" error={errors.taxRatePct?.message}><TextInput type="number" min={0} max={100} step="0.5" {...register("taxRatePct")} /></Field>
+        <Field label="Hosting fee" hint="0 if none" error={errors.hostingFeeAmount?.message}><TextInput type="number" min={0} step="10" {...register("hostingFeeAmount")} /></Field>
         <Field label="Hosting cycle">
           <Select {...register("hostingCycle")}>{HOSTING_CYCLES.map((c) => <option key={c}>{c}</option>)}</Select>
         </Field>
@@ -152,9 +119,7 @@ export default function ClientsPage() {
 
   const clientsQ = useQuery({
     queryKey: ["clients", page, debouncedSearch, status, industry],
-    queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", {
-      params: { page, limit: LIMIT, search: debouncedSearch || undefined, status: status || undefined, industry: industry || undefined },
-    })).data,
+    queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", { params: { page, limit: LIMIT, search: debouncedSearch || undefined, status: status || undefined, industry: industry || undefined } })).data,
     placeholderData: (prev) => prev,
   });
 
@@ -163,7 +128,9 @@ export default function ClientsPage() {
   const deleteMutation = useMutation({
     mutationFn: (c: ClientRow) => api.delete(`/clients/${c.id}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["clients", "dash"] });
+      // ✅ FIXED: Separate invalidation calls
+      void qc.invalidateQueries({ queryKey: ["clients"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", "Client deactivated", `${deleteTarget?.companyName} was soft-deleted (SRS B.6).`);
       setDeleteTarget(null);
     },

@@ -18,7 +18,6 @@ import { IconEye, IconPencil, IconPlus, IconSearch, IconTrash } from "../compone
 
 const LIMIT = 10;
 
-// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
 const getArr = <T,>(d: unknown): T[] => {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -65,7 +64,9 @@ function InvoiceFormModal({ open, onClose, invoice, presetClientId }: { open: bo
       return invoice ? api.put(`/invoices/${invoice.id}`, payload) : api.post("/invoices", payload);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["invoices", "client", "dash"] });
+      // ✅ FIXED: Separate invalidation calls
+      void qc.invalidateQueries({ queryKey: ["invoices"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", invoice ? "Invoice updated" : "Invoice created", invoice?.number);
       onClose();
     },
@@ -146,9 +147,7 @@ export default function InvoicesPage() {
   const clientsQ = useClientsOptions();
   const invoicesQ = useQuery({
     queryKey: ["invoices", page, debouncedSearch, status, clientId, from, to],
-    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", {
-      params: { page, limit: LIMIT, status: status || undefined, clientId: clientId || undefined, from: from || undefined, to: to || undefined, search: debouncedSearch || undefined },
-    })).data,
+    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { page, limit: LIMIT, status: status || undefined, clientId: clientId || undefined, from: from || undefined, to: to || undefined, search: debouncedSearch || undefined } })).data,
     placeholderData: (prev) => prev,
   });
 
@@ -157,7 +156,9 @@ export default function InvoicesPage() {
   const deleteMutation = useMutation({
     mutationFn: (i: InvoiceRow) => api.delete(`/invoices/${i.id}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["invoices", "dash"] });
+      // ✅ FIXED: Separate invalidation calls
+      void qc.invalidateQueries({ queryKey: ["invoices"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", "Invoice voided", `${deleteTarget?.number} was soft-deleted (Module I log entry created).`);
       setDeleteTarget(null);
     },

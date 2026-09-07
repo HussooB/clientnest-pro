@@ -18,7 +18,6 @@ import { IconPencil, IconPlus, IconSearch } from "../components/icons";
 
 const LIMIT = 10;
 
-// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
 const getArr = <T,>(d: unknown): T[] => {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -70,7 +69,9 @@ function LicenseFormModal({ open, onClose, license, presetClientId }: { open: bo
       return license ? api.put(`/licenses/${license.id}`, payload) : api.post("/licenses", payload);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["licenses", "clients", "dash"] });
+      // ✅ FIXED: Separate invalidation calls
+      void qc.invalidateQueries({ queryKey: ["licenses"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", license ? "License updated" : "License granted", license?.clientName);
       onClose();
     },
@@ -135,9 +136,7 @@ export default function LicensesPage() {
   const clientsQ = useClientsOptions();
   const licensesQ = useQuery({
     queryKey: ["licenses", page, debouncedSearch, expiring, clientId, type],
-    queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", {
-      params: { page, limit: LIMIT, clientId: clientId || undefined, type: type || undefined, expiringWithin: expiring || undefined, search: debouncedSearch || undefined },
-    })).data,
+    queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { page, limit: LIMIT, clientId: clientId || undefined, type: type || undefined, expiringWithin: expiring || undefined, search: debouncedSearch || undefined } })).data,
     placeholderData: (prev) => prev,
   });
 

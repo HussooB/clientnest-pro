@@ -18,7 +18,6 @@ import { IconEye, IconPencil, IconPlus, IconSearch } from "../components/icons";
 
 const LIMIT = 10;
 
-// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
 const getArr = <T,>(d: unknown): T[] => {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -52,9 +51,12 @@ export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onCl
   }, [open, ticket, reset]);
 
   const mutation = useMutation({
-    mutationFn: (form: TicketForm) => (ticket ? api.put(`/tickets/${ticket.id}`, form) : api.post("/tickets", form)),
+    mutationFn: (form: TicketForm) => (ticket && ticket.id ? api.put(`/tickets/${ticket.id}`, form) : api.post("/tickets", form)),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["tickets", "ticket", "dash"] });
+      // ✅ FIXED: Separate invalidation calls so React Query properly matches and refreshes the lists
+      void qc.invalidateQueries({ queryKey: ["tickets"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      
       toast.push("success", ticket ? "Ticket updated" : "Ticket created", ticket?.ref);
       onClose();
     },
