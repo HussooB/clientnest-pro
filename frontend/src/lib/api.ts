@@ -1,7 +1,7 @@
 import axios, { AxiosError } from "axios";
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://clientnest-backend-fbwo.onrender.com/api";
 const TOKEN_KEY = "clientnest.token";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
