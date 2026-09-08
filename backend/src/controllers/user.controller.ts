@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { toSafeUser } from "../utils/user";
-import { hashPassword } from "../utils/password"; // Make sure this import matches your project
+import { hashPassword } from "../utils/password"; 
 
 export async function listUsers(_req: Request, res: Response): Promise<void> {
   const users = await prisma.user.findMany({
@@ -26,10 +26,37 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
   });
 }
 
+// ✅ ADD THIS NEW CONTROLLER
+export async function createUser(req: Request, res: Response): Promise<void> {
+  const { name, email, password, role, isActive } = req.body;
+
+  // Check if user already exists
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    res.status(409).json({ success: false, message: "User with this email already exists" });
+    return;
+  }
+
+  const passwordHash = await hashPassword(password);
+
+  const newUser = await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash,
+      role,
+      isActive: isActive ?? true,
+    },
+  });
+
+  res.status(201).json({
+    success: true,
+    data: toSafeUser(newUser),
+  });
+}
+
 export async function updateUser(req: Request, res: Response): Promise<void> {
-  // ✅ FIX: Cast req.params to ensure 'id' is treated as a strict string for Prisma
   const { id } = req.params as { id: string };
-  
   const { name, email, role, isActive, password } = req.body;
 
   const existingUser = await prisma.user.findUnique({ where: { id } });
@@ -40,7 +67,6 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
 
   const updateData: any = { name, email, role, isActive };
   
-  // Only update the password if a new one was actually provided
   if (password && password.trim().length > 0) {
     updateData.passwordHash = await hashPassword(password);
   }
