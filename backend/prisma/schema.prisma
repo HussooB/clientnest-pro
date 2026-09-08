@@ -91,6 +91,28 @@ enum TicketStatus {
   Closed
 }
 
+enum ContractStatus {
+  Draft
+  Active
+  Expired
+  Terminated
+}
+
+enum FeatureRequestStatus {
+  Requested
+  Approved
+  InProgress
+  Delivered
+  Rejected
+}
+
+enum FeatureCategory {
+  CustomDevelopment
+  OutOfScope
+  BugFix
+  Enhancement
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -149,7 +171,8 @@ model Client {
   licenses        License[]
   invoices        Invoice[]
   tickets         Ticket[]     
-  contracts       Contract[]   // ✅ ADD THIS LINE HERE
+  contracts       Contract[]
+  featureRequests FeatureRequest[] // ✅ FIXED: Added "Request[]"
 
   @@index([companyName])
 }
@@ -188,6 +211,7 @@ model Product {
   description String?
   basePrice   Float
   licenses    License[]
+  featureRequests FeatureRequest[]
 }
 
 model License {
@@ -219,7 +243,7 @@ model Invoice {
   updatedAt     DateTime      @updatedAt
 
   client        Client        @relation(fields: [clientId], references: [id])
-  items         InvoiceItem[] // 👈 Added back-relation for items
+  items         InvoiceItem[] 
   payments      Payment[]
   creditNotes   CreditNote[]
 
@@ -227,7 +251,6 @@ model Invoice {
   @@index([dueDate])
 }
 
-// ── Added InvoiceItem model ──
 model InvoiceItem {
   id          String   @id @default(cuid())
   invoiceId   String
@@ -345,9 +368,23 @@ model Contract {
   @@index([status])
 }
 
-enum ContractStatus {
-  Draft
-  Active
-  Expired
-  Terminated
+model FeatureRequest {
+  id            String               @id @default(cuid())
+  clientId      String
+  productId     String?
+  title         String
+  description   String
+  category      FeatureCategory
+  status        FeatureRequestStatus @default(Requested)
+  estimatedCost Float?
+  roadmapItem   String?
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  client        Client               @relation(fields: [clientId], references: [id])
+  product       Product?             @relation(fields: [productId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
 }

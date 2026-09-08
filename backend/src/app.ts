@@ -20,6 +20,7 @@ import reportRoutes from "./routes/report.routes";
 import auditRoutes from "./routes/audit.routes";
 import ticketRoutes from "./routes/ticket.routes";
 import contractRoutes from "./routes/contract.routes";
+import featureRequestRoutes from "./routes/featureRequest.routes";
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/contracts", contractRoutes);
+app.use("/api/feature-requests", featureRequestRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
