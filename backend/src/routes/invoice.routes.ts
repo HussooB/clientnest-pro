@@ -8,23 +8,27 @@ import {
   updateInvoice,
   deleteInvoice,
   getStatementOfAccount,
-  recordPayment,      // ✅ Add these imports
-  issueCreditNote,    // ✅
+  recordPayment,
+  issueCreditNote,
 } from "../controllers/invoice.controller";
 
 const router = Router();
 
 router.use(authenticate);
 
-router.get("/", listInvoices);
-// ✅ FIX: Move SOA route BEFORE /:id to prevent route collision
-router.get("/:id/soa", getStatementOfAccount); 
+// ✅ 1. SPECIFIC routes MUST come before generic parameterized routes (/:id)
+router.get("/:id/soa", getStatementOfAccount);
+
+// ✅ 2. Generic parameterized route
 router.get("/:id", getInvoice);
+
+// ✅ 3. Collection routes
+router.get("/", listInvoices);
 router.post("/", requireRole("Admin", "Finance"), createInvoice);
+
+// ✅ 4. Action routes
 router.put("/:id", requireRole("Admin", "Finance"), updateInvoice);
 router.delete("/:id", requireRole("Admin"), deleteInvoice);
-
-// ✅ ADD THESE NEW ROUTES
 router.post("/:id/payments", requireRole("Admin", "Finance"), recordPayment);
 router.post("/:id/credit-notes", requireRole("Admin", "Finance"), issueCreditNote);
 

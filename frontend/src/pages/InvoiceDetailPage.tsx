@@ -16,6 +16,8 @@ import {
 import { Timeline } from "./ClientDetailPage";
 import type { ActivityItem } from "../types";
 import { IconCard, IconChevronLeft, IconDownload } from "../components/icons";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable"; 
 
 const paymentSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than zero"),
@@ -167,9 +169,89 @@ export default function InvoiceDetailPage() {
   const downloadSoa = async () => {
     setSoaBusy(true);
     try {
-      const res = await api.get(`/invoices/${id}/soa`, { responseType: "blob" });
-      downloadBlob(`SoA-${bundleQ.data?.invoiceNumber ?? id}.pdf`, res.data as Blob);
-      toast.push("success", "Statement downloaded", "PDF generated from live ledger data.");
+      // 1. Fetch the statement data as JSON from the backend
+      const res = await api.get(`/invoices/${id}/soa`);
+      const data = res.data.data;
+
+      // 2. Initialize a new PDF document (A4 size, portrait)
+      const doc = new jsPDF();
+      
+      // 3. Add Header and Title
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text("Statement of Account", 14, 20);
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Invoice Number: ${data.invoiceNumber}`, 14, 35);
+      doc.text(`Issue Date: ${new Date(data.issueDate).toLocaleDateString()}`, 14, 42);
+      doc.text(`Due Date: ${new Date(data.dueDate).toLocaleDateString()}`, 14, 49);
+
+      // 4. Add "Billed To" Section
+      doc.setFont("helvetica", "bold");
+      doc.text("Billed To:", 14, 65);
+      doc.setFont("helvetica", "normal");
+      doc.text(data.client.companyName, 14, 72);
+      if (data.client.billingAddress) {
+        doc.text(data.client.billingAddress, 14, 79);
+      }
+      doc.text(`Tax ID: ${data.client.taxId || "N/A"}`, 14, 86);
+
+      // 5. Add Payments Table using autoTable
+      const paymentRows = data.payments.map((p: any) => [
+        new Date(p.paymentDate).toLocaleDateString(),
+        p.method,
+        p.category,
+        fmtMoney(p.amount),
+        p.notes || "—"
+      ]);
+
+      // ✅ FIX: Import autoTable and call it as a function, passing 'doc' as the first argument
+      import("jspdf-autotable").then((jspdfAutotable) => {
+        const autoTable = jspdfAutotable.default;
+        
+        autoTable(doc, {
+          startY: 95,
+          head: [["Date", "Method", "Category", "Amount", "Notes"]],
+          body: paymentRows.length > 0 ? paymentRows : [["No payments recorded yet", "", "", "", ""]],
+          theme: "striped",
+          headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: "bold" },
+          styles: { fontSize: 10, cellPadding: 3 },
+          columnStyles: {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 35 },
+            2: { cellWidth: 35 },
+            3: { cellWidth: 35, halign: "right" },
+            4: { cellWidth: "auto" }
+          }
+        });
+
+        // 6. Add Financial Totals at the bottom
+        const finalY = (doc as any).lastAutoTable.finalY + 15;
+        
+        doc.setFontSize(11);
+        doc.text(`Subtotal:`, 130, finalY, { align: "right" });
+        doc.text(fmtMoney(data.subtotal), 195, finalY, { align: "right" });
+        
+        doc.text(`Tax:`, 130, finalY + 7, { align: "right" });
+        doc.text(fmtMoney(data.taxAmount), 195, finalY + 7, { align: "right" });
+        
+        doc.setFont("helvetica", "bold");
+        doc.text(`Total Amount:`, 130, finalY + 14, { align: "right" });
+        doc.text(fmtMoney(data.totalAmount), 195, finalY + 14, { align: "right" });
+        
+        doc.text(`Total Paid:`, 130, finalY + 21, { align: "right" });
+        doc.text(fmtMoney(data.paidAmount), 195, finalY + 21, { align: "right" });
+        
+        doc.setFontSize(13);
+        doc.text(`Balance Due:`, 130, finalY + 30, { align: "right" });
+        doc.text(fmtMoney(data.balance), 195, finalY + 30, { align: "right" });
+
+        // 7. Save and download the PDF
+        doc.save(`SoA-${data.invoiceNumber}.pdf`);
+        toast.push("success", "Statement downloaded", "Professional PDF generated successfully.");
+      });
+
     } catch (e) {
       toast.push("error", "Download failed", apiErrorMsg(e));
     } finally {
