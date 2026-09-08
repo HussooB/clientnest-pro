@@ -16,6 +16,7 @@ import TicketDetailPage from "./pages/TicketDetailPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import UsersPage from "./pages/UsersPage";
 import ReportsPage from "./pages/ReportsPage";
+import ContractsPage from "./pages/ContractsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +55,7 @@ export default function App() {
                 <Route path="users" element={<RequireRole roles={["Admin"]}><UsersPage /></RequireRole>} />
                 <Route path="audit-logs" element={<RequireRole roles={["Admin"]}><AuditLogsPage /></RequireRole>} />
                 <Route path="reports" element={<RequireRole roles={["Admin"]}><ReportsPage /></RequireRole>} />
+                <Route path="contracts" element={<RequireRole roles={["Admin"]}><ContractsPage /></RequireRole>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

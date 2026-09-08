@@ -195,3 +195,11 @@ export const IconSpinner = (p: P) => (
     <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5" />
   </svg>
 );
+
+export const IconUpload = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);

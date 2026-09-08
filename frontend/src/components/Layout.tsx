@@ -39,6 +39,12 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Contracts",
+    items: [
+      { to: "/contracts", label: "Contracts", icon: (p) => <IconScroll {...p} />, roles: ["Admin"] },
+    ],
+  },
+  {
     label: "Administration",
     items: [
       { to: "/users", label: "Users", icon: (p) => <IconKey {...p} />, roles: ["Admin"] },

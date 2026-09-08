@@ -19,6 +19,7 @@ import creditNoteRoutes from "./routes/creditNote.routes";
 import reportRoutes from "./routes/report.routes";
 import auditRoutes from "./routes/audit.routes";
 import ticketRoutes from "./routes/ticket.routes";
+import contractRoutes from "./routes/contract.routes";
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/credit-notes", creditNoteRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/contracts", contractRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

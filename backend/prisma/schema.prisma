@@ -149,6 +149,7 @@ model Client {
   licenses        License[]
   invoices        Invoice[]
   tickets         Ticket[]     
+  contracts       Contract[]   // ✅ ADD THIS LINE HERE
 
   @@index([companyName])
 }
@@ -316,4 +317,37 @@ model Attachment {
   ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   
   @@index([ticketId])
+}
+
+model Contract {
+  id            String         @id @default(cuid())
+  clientId      String
+  title         String
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  autoRenewal   Boolean        @default(false)
+  renewalPeriod String?        
+  value         Float?
+  status        ContractStatus @default(Active)
+  fileUrl       String?
+  fileName      String?
+  fileType      String?
+  fileSize      Int?           
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  client        Client         @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([endDate])
+  @@index([status])
+}
+
+enum ContractStatus {
+  Draft
+  Active
+  Expired
+  Terminated
 }
