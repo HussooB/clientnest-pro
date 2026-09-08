@@ -33,6 +33,12 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [{ to: "/tickets", label: "Support Tickets", icon: (p) => <IconLifebuoy {...p} /> }],
   },
   {
+    label: "Reports",
+    items: [
+      { to: "/reports", label: "Reports", icon: (p) => <IconScroll {...p} />, roles: ["Admin"] },
+    ],
+  },
+  {
     label: "Administration",
     items: [
       { to: "/users", label: "Users", icon: (p) => <IconKey {...p} />, roles: ["Admin"] },
@@ -51,6 +57,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/invoices/, "Financial Management"],
   [/^\/tickets\/.+/, "Ticket Detail"],
   [/^\/tickets/, "Support & Activity"],
+  [/^\/reports/, "Reports & Analytics"],
   [/^\/users/, "User Management"],
   [/^\/audit-logs/, "Audit Trail"],
 ];
@@ -112,7 +119,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* ── Sidebar ── */}
+      {/* ── Sidebar ─ */}
       <aside className="sidebar-texture flex w-[228px] shrink-0 flex-col border-r border-petrol-700/60 bg-petrol-900 text-paper">
         <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
           <LogoMark size={34} />
