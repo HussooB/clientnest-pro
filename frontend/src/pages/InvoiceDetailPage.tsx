@@ -17,13 +17,6 @@ import { Timeline } from "./ClientDetailPage";
 import type { ActivityItem } from "../types";
 import { IconCard, IconChevronLeft, IconDownload } from "../components/icons";
 
-interface InvoiceBundle {
-  invoice: InvoiceRow;
-  client: ClientRow | null;
-  payments: (Payment & { createdByName?: string })[];
-  creditNotes: (CreditNote & { createdByName?: string })[];
-}
-
 const paymentSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   paymentDate: z.string().min(1, "Date is required"),
@@ -33,10 +26,10 @@ const paymentSchema = z.object({
 });
 type PaymentForm = z.infer<typeof paymentSchema>;
 
-function PaymentModal({ open, onClose, bundle }: { open: boolean; onClose: () => void; bundle: InvoiceBundle }) {
+function PaymentModal({ open, onClose, invoiceData }: { open: boolean; onClose: () => void; invoiceData: any }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const balance = bundle.invoice.balance;
+  const balance = invoiceData.balance;
   const { register, handleSubmit, reset, formState: { errors } } = useForm<PaymentForm>({
     resolver: zodResolver(paymentSchema.superRefine((v, ctx) => {
       if (v.amount > balance + 0.001) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Cannot exceed balance of ${fmtMoney(balance)}`, path: ["amount"] });
@@ -48,20 +41,20 @@ function PaymentModal({ open, onClose, bundle }: { open: boolean; onClose: () =>
   }, [open, reset, balance]);
 
   const mutation = useMutation({
-    mutationFn: (form: PaymentForm) => api.post(`/invoices/${bundle.invoice.id}/payments`, form),
+    mutationFn: (form: PaymentForm) => api.post(`/invoices/${invoiceData.id}/payments`, form),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["invoice", bundle.invoice.id] });
+      void qc.invalidateQueries({ queryKey: ["invoice", invoiceData.id] });
       void qc.invalidateQueries({ queryKey: ["invoices"] });
       void qc.invalidateQueries({ queryKey: ["client"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
-      toast.push("success", "Payment recorded", `${bundle.invoice.invoiceNumber} status recalculated automatically.`);
+      toast.push("success", "Payment recorded", `${invoiceData.invoiceNumber} status recalculated automatically.`);
       onClose();
     },
     onError: (e) => toast.push("error", "Payment failed", apiErrorMsg(e)),
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Record payment" sub={`${bundle.invoice.invoiceNumber} · outstanding balance ${fmtMoney(balance)}`}
+    <Modal open={open} onClose={onClose} title="Record payment" sub={`${invoiceData.invoiceNumber} · outstanding balance ${fmtMoney(balance)}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -104,10 +97,10 @@ const creditSchema = z.object({
 });
 type CreditForm = z.infer<typeof creditSchema>;
 
-function CreditNoteModal({ open, onClose, bundle }: { open: boolean; onClose: () => void; bundle: InvoiceBundle }) {
+function CreditNoteModal({ open, onClose, invoiceData }: { open: boolean; onClose: () => void; invoiceData: any }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const balance = bundle.invoice.balance;
+  const balance = invoiceData.balance;
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreditForm>({
     resolver: zodResolver(creditSchema.superRefine((v, ctx) => {
       if (v.amount > balance + 0.001) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Cannot exceed balance of ${fmtMoney(balance)}`, path: ["amount"] });
@@ -119,9 +112,9 @@ function CreditNoteModal({ open, onClose, bundle }: { open: boolean; onClose: ()
   }, [open, reset]);
 
   const mutation = useMutation({
-    mutationFn: (form: CreditForm) => api.post(`/invoices/${bundle.invoice.id}/credit-notes`, form),
+    mutationFn: (form: CreditForm) => api.post(`/invoices/${invoiceData.id}/credit-notes`, form),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["invoice", bundle.invoice.id] });
+      void qc.invalidateQueries({ queryKey: ["invoice", invoiceData.id] });
       void qc.invalidateQueries({ queryKey: ["invoices"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
       toast.push("success", "Credit note issued", "Recorded immutably in the audit trail (Module I).");
@@ -131,7 +124,7 @@ function CreditNoteModal({ open, onClose, bundle }: { open: boolean; onClose: ()
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Issue credit note" sub={`${bundle.invoice.invoiceNumber} · credit reduces the outstanding balance`}
+    <Modal open={open} onClose={onClose} title="Issue credit note" sub={`${invoiceData.invoiceNumber} · credit reduces the outstanding balance`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -165,7 +158,8 @@ export default function InvoiceDetailPage() {
   const bundleQ = useQuery({
     queryKey: ["invoice", id],
     queryFn: async () => {
-      const res = await api.get<InvoiceBundle>(`/invoices/${id}`);
+      const res = await api.get(`/invoices/${id}`);
+      // Backend returns the invoice flat inside `data`, not nested under an `invoice` key
       return (res.data as any)?.data ?? res.data;
     },
   });
@@ -174,7 +168,7 @@ export default function InvoiceDetailPage() {
     setSoaBusy(true);
     try {
       const res = await api.get(`/invoices/${id}/soa`, { responseType: "blob" });
-      downloadBlob(`SoA-${bundleQ.data?.invoice.invoiceNumber ?? id}.pdf`, res.data as Blob);
+      downloadBlob(`SoA-${bundleQ.data?.invoiceNumber ?? id}.pdf`, res.data as Blob);
       toast.push("success", "Statement downloaded", "PDF generated from live ledger data.");
     } catch (e) {
       toast.push("error", "Download failed", apiErrorMsg(e));
@@ -185,9 +179,10 @@ export default function InvoiceDetailPage() {
 
   if (bundleQ.isError) return <ErrorState message={apiErrorMsg(bundleQ.error)} onRetry={() => bundleQ.refetch()} />;
   
-  const bundle = bundleQ.data as InvoiceBundle | undefined;
+  const invoiceData = bundleQ.data as any;
   
-  if (!bundle || !bundle.invoice) {
+  // ✅ FIXED: Check for invoiceData.id instead of invoiceData.invoice
+  if (!invoiceData || !invoiceData.id) {
     return (
       <div className="space-y-4">
         <div className="skeleton h-24 w-full rounded-xl" />
@@ -199,19 +194,21 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  const { invoice, client, payments = [], creditNotes = [] } = bundle;
+  const invoice = invoiceData;
+  const client = invoice.client;
+  const payments = invoice.payments || [];
+  const creditNotes = invoice.creditNotes || [];
   const overdue = invoice.status === "Overdue";
 
   const timeline: ActivityItem[] = [
-    ...payments.map((p) => ({
+    ...payments.map((p: any) => ({
       id: `p-${p.id}`, kind: "payment" as const, title: `Payment received — ${fmtMoney(p.amount)}`,
       detail: `${p.method} · ${p.category}${p.notes ? ` · ${p.notes}` : ""} · by ${p.createdByName ?? "—"}`, at: p.createdAt,
     })),
-    ...creditNotes.map((c) => ({
+    ...creditNotes.map((c: any) => ({
       id: `c-${c.id}`, kind: "credit" as const, title: `Credit note — ${fmtMoney(c.amount)}`,
       detail: `${c.reason} · by ${c.createdByName ?? "—"}`, at: c.createdAt,
     })),
-    // ✅ FIXED: Changed invoice.number to invoice.invoiceNumber
     { id: `i-${invoice.id}`, kind: "invoice" as const, title: `Invoice ${invoice.invoiceNumber} issued`, detail: `Total ${fmtMoney(invoice.totalAmount)} · due ${fmtDate(invoice.dueDate)}`, at: invoice.createdAt },
   ].sort((a, b) => b.at.localeCompare(a.at));
 
@@ -225,7 +222,6 @@ export default function InvoiceDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              {/* ✅ FIXED: Changed invoice.number to invoice.invoiceNumber */}
               <h1 className="font-mono text-[26px] font-extrabold tracking-tight">{invoice.invoiceNumber}</h1>
               <Badge tone={invoiceTone(invoice.status)} dot>{invoice.status}</Badge>
               {overdue && <Badge tone="red">{daysOverdue(invoice.dueDate)} days overdue</Badge>}
@@ -255,7 +251,7 @@ export default function InvoiceDetailPage() {
             { label: "Subtotal", value: fmtMoney(invoice.subtotal) },
             { label: `Tax ${invoice.taxRatePct}%`, value: fmtMoney(invoice.taxAmount) },
             { label: "Total", value: fmtMoney(invoice.totalAmount), strong: true },
-            { label: "Paid + credits", value: fmtMoney(invoice.paid + (invoice as any).credits || 0), good: true },
+            { label: "Paid + credits", value: fmtMoney((invoice as any).paidAmount + (invoice as any).creditTotal || 0), good: true },
             { label: "Balance due", value: fmtMoney(invoice.balance), warn: invoice.balance > 0 && overdue },
           ].map((s) => (
             <div key={s.label} className={`rounded-lg border px-4 py-3 ${s.warn ? "border-rose-300 bg-rose-50" : "border-line/80 bg-paper/60"}`}>
@@ -269,21 +265,28 @@ export default function InvoiceDetailPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card title="Line items" pad={false} className="animate-fade-up">
-            <Table minWidth="min-w-[520px]"
-              head={<><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Unit price</Th><Th className="text-right">Amount</Th></>}>
-              {invoice.items?.map((it) => (
-                <tr key={it.id}>
-                  <Td className="font-medium">{it.description}</Td>
-                  <Td className="text-right"><span className="tnum font-mono">{it.qty}</span></Td>
-                  <Td className="text-right"><span className="tnum font-mono">{fmtMoney(it.unitPrice)}</span></Td>
-                  <Td className="text-right"><span className="tnum font-mono font-semibold">{fmtMoney(it.qty * it.unitPrice)}</span></Td>
+            {/* ✅ FIXED: Safely handle empty items array */}
+            {invoice.items && invoice.items.length > 0 ? (
+              <Table minWidth="min-w-[520px]"
+                head={<><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Unit price</Th><Th className="text-right">Amount</Th></>}>
+                {invoice.items.map((it: any) => (
+                  <tr key={it.id}>
+                    <Td className="font-medium">{it.description}</Td>
+                    <Td className="text-right"><span className="tnum font-mono">{it.qty}</span></Td>
+                    <Td className="text-right"><span className="tnum font-mono">{fmtMoney(it.unitPrice)}</span></Td>
+                    <Td className="text-right"><span className="tnum font-mono font-semibold">{fmtMoney(it.qty * it.unitPrice)}</span></Td>
+                  </tr>
+                ))}
+                <tr className="bg-paper/60">
+                  <Td colSpan={3} className="text-right font-bold">Total (incl. tax)</Td>
+                  <Td className="text-right"><span className="tnum font-mono font-extrabold text-brand-800">{fmtMoney(invoice.totalAmount)}</span></Td>
                 </tr>
-              ))}
-              <tr className="bg-paper/60">
-                <Td colSpan={3} className="text-right font-bold">Total (incl. tax)</Td>
-                <Td className="text-right"><span className="tnum font-mono font-extrabold text-brand-800">{fmtMoney(invoice.totalAmount)}</span></Td>
-              </tr>
-            </Table>
+              </Table>
+            ) : (
+              <div className="px-5 py-8 text-center text-[13px] text-mute">
+                No line items recorded for this invoice. Total: <strong className="text-ink">{fmtMoney(invoice.totalAmount)}</strong>
+              </div>
+            )}
           </Card>
 
           <Card title="Payments" sub={`${payments.length} recorded`} pad={false} className="animate-fade-up"
@@ -295,7 +298,7 @@ export default function InvoiceDetailPage() {
             ) : (
               <Table minWidth="min-w-[560px]"
                 head={<><Th>Date</Th><Th className="text-right">Amount</Th><Th>Method</Th><Th>Category</Th><Th>By</Th><Th>Notes</Th></>}>
-                {payments.map((p) => (
+                {payments.map((p: any) => (
                   <tr key={p.id} className="transition-colors hover:bg-brand-50/40">
                     <Td className="text-mute">{fmtDate(p.paymentDate)}</Td>
                     <Td className="text-right"><span className="tnum font-mono font-bold text-emerald-700">{fmtMoney(p.amount)}</span></Td>
@@ -316,7 +319,7 @@ export default function InvoiceDetailPage() {
               <p className="px-5 py-6 text-center text-[13px] text-mute">None issued.</p>
             ) : (
               <ul className="divide-y divide-line/60">
-                {creditNotes.map((c) => (
+                {creditNotes.map((c: any) => (
                   <li key={c.id} className="px-5 py-3">
                     <div className="flex items-center justify-between">
                       <span className="tnum font-mono font-bold text-amber-700">−{fmtMoney(c.amount)}</span>
@@ -344,8 +347,8 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} bundle={bundle} />
-      <CreditNoteModal open={creditOpen} onClose={() => setCreditOpen(false)} bundle={bundle} />
+      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} invoiceData={invoice} />
+      <CreditNoteModal open={creditOpen} onClose={() => setCreditOpen(false)} invoiceData={invoice} />
     </div>
   );
-} 
+}

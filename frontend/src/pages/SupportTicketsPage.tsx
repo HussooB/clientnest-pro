@@ -18,14 +18,6 @@ import { IconEye, IconPencil, IconPlus, IconSearch } from "../components/icons";
 
 const LIMIT = 10;
 
-const getArr = <T,>(d: unknown): T[] => {
-  if (Array.isArray(d)) return d as T[];
-  if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
-    return (d as Record<string, unknown>).data as T[];
-  }
-  return [];
-};
-
 const ticketSchema = z.object({
   clientId: z.string().min(1, "Select a client"),
   subject: z.string().min(5, "Subject is required (min 5 characters)"),
@@ -53,7 +45,6 @@ export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onCl
   const mutation = useMutation({
     mutationFn: (form: TicketForm) => (ticket && ticket.id ? api.put(`/tickets/${ticket.id}`, form) : api.post("/tickets", form)),
     onSuccess: () => {
-      // ✅ FIXED: Separate invalidation calls so React Query properly matches and refreshes the lists
       void qc.invalidateQueries({ queryKey: ["tickets"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
       
@@ -73,13 +64,13 @@ export function TicketFormModal({ open, onClose, ticket }: { open: boolean; onCl
         <Field label="Client" required error={errors.clientId?.message}>
           <Select error={!!errors.clientId} {...register("clientId")}>
             <option value="">Select client…</option>
-            {getArr(clientsQ.data).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+            {(clientsQ.data || []).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
           </Select>
         </Field>
         <Field label="Assigned to">
           <Select {...register("assignedToId")}>
             <option value="">Unassigned</option>
-            {getArr(usersQ.data).filter((u: any) => u.isActive).map((u: any) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
+            {(usersQ.data || []).filter((u: any) => u.isActive).map((u: any) => <option key={u.id} value={u.id}>{u.name} · {u.role}</option>)}
           </Select>
         </Field>
         <div className="col-span-2">
@@ -114,15 +105,37 @@ export default function SupportTicketsPage() {
 
   const clientsQ = useClientsOptions();
   const usersQ = useUsersQuery();
+  
   const ticketsQ = useQuery({
     queryKey: ["tickets", page, debouncedSearch, status, priority, clientId, assignedTo],
-    queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", {
-      params: { page, limit: LIMIT, status: status || undefined, priority: priority || undefined, clientId: clientId || undefined, assignedTo: assignedTo || undefined, search: debouncedSearch || undefined },
-    })).data,
+    queryFn: async () => {
+      const res = await api.get<any>("/tickets", {
+        params: { page, limit: LIMIT, status: status || undefined, priority: priority || undefined, clientId: clientId || undefined, assignedTo: assignedTo || undefined, search: debouncedSearch || undefined },
+      });
+      
+      // ✅ Backend returns { success: true, data: { tickets: [...], total: 1, page: 1, limit: 10 } }
+      const responseData = res.data?.data || res.data || {};
+      const ticketsArray = responseData.tickets || responseData.data || [];
+      
+      // ✅ Map nested backend response to flat frontend TicketRow type
+      const mappedTickets = ticketsArray.map((t: any) => ({
+        ...t,
+        clientName: t.client?.companyName || "Unknown Client",
+        assigneeName: t.assignedTo?.name || "Unassigned",
+        minutesTotal: t.minutesTotal ?? 0,
+      }));
+
+      return {
+        data: mappedTickets,
+        total: responseData.total ?? 0,
+        page: responseData.page ?? 1,
+        limit: responseData.limit ?? LIMIT,
+      };
+    },
     placeholderData: (prev) => prev,
   });
 
-  const rows = getArr<TicketRow>(ticketsQ.data);
+  const rows = ticketsQ.data?.data ?? [];
   const total = ticketsQ.data?.total ?? 0;
 
   return (
@@ -143,11 +156,11 @@ export default function SupportTicketsPage() {
           </Select>
           <Select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-[180px]">
             <option value="">All clients</option>
-            {getArr(clientsQ.data).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+            {(clientsQ.data || []).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
           </Select>
           <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-[160px]">
             <option value="">Anyone</option>
-            {getArr(usersQ.data).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {(usersQ.data || []).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </Select>
         </div>
         {ticketsQ.isError ? (
@@ -159,7 +172,7 @@ export default function SupportTicketsPage() {
             action={manage ? <Button size="sm" onClick={() => { setFormTicket(null); setFormOpen(true); }}><IconPlus width={14} height={14} /> New ticket</Button> : undefined} />
         ) : (
           <Table minWidth="min-w-[980px]" head={<><Th>Ref</Th><Th>Subject</Th><Th>Client</Th><Th>Priority</Th><Th>Status</Th><Th>Assigned</Th><Th className="text-right">Time</Th><Th>Created</Th><Th className="text-right">Actions</Th></>}>
-            {rows.map((t) => (
+            {rows.map((t: any) => (
               <tr key={t.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/tickets/${t.id}`)}>
                 <Td className="font-mono text-[12.5px] font-bold text-brand-800">{t.ref}</Td>
                 <Td className="max-w-[300px]"><p className="truncate font-bold group-hover:text-brand-800">{t.subject}</p></Td>

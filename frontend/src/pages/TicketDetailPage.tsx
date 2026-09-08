@@ -4,20 +4,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { can, fmtDateTime, fmtMinutes, SLA, slaState, timeAgo } from "../lib/utils";
-import type { Attachment, ClientRow, TicketRow, TimeLog } from "../types";
+import type { Attachment, ClientRow, TicketPriority, TicketRow, TimeLog } from "../types";
 import {
   apiErrorMsg, Badge, Button, Card, ErrorState, priorityTone, Table, Td, TextInput, Th,
   ticketTone, useToast,
 } from "../components/ui";
 import { TicketFormModal } from "./SupportTicketsPage";
 import { IconChevronLeft, IconClock, IconPaperclip, IconPencil, IconPlus } from "../components/icons";
-
-interface TicketBundle {
-  ticket: TicketRow;
-  client: ClientRow | null;
-  timeLogs: TimeLog[];
-  attachments: (Attachment & { uploadedByName?: string })[];
-}
 
 export default function TicketDetailPage() {
   const { id = "" } = useParams();
@@ -35,7 +28,11 @@ export default function TicketDetailPage() {
 
   const bundleQ = useQuery({
     queryKey: ["ticket", id],
-    queryFn: async () => (await api.get<TicketBundle>(`/tickets/${id}`)).data,
+    queryFn: async () => {
+      const res = await api.get<any>(`/tickets/${id}`);
+      // ✅ Backend returns { success: true, data: { id, ref, client: {...}, timeLogs: [...], ... } }
+      return res.data?.data || res.data;
+    },
   });
 
   const invalidate = () => {
@@ -72,22 +69,32 @@ export default function TicketDetailPage() {
     timeMutation.mutate(mins);
   };
 
-  if (bundleQ.isError) return <ErrorState message={apiErrorMsg(bundleQ.error)} onRetry={() => bundleQ.refetch()} />;
-  const bundle = bundleQ.data;
-  if (!bundle)
+  // ✅ 1. Show loading skeleton while fetching
+  if (bundleQ.isLoading || !bundleQ.data) {
     return (
       <div className="space-y-4">
-        <div className="skeleton h-28 w-full rounded-xl" />
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="skeleton h-72 rounded-xl lg:col-span-2" />
-          <div className="skeleton h-72 rounded-xl" />
+        <div className="rounded-xl border border-line bg-card p-6">
+          <div className="skeleton h-8 w-72" />
+          <div className="skeleton mt-3 h-4 w-96" />
         </div>
+        <div className="skeleton h-64 w-full rounded-xl" />
       </div>
     );
+  }
 
-  const { ticket, client, timeLogs, attachments } = bundle;
+  if (bundleQ.isError) return <ErrorState message={apiErrorMsg(bundleQ.error)} onRetry={() => bundleQ.refetch()} />;
+
+  // ✅ 2. Cast to any to handle extra detail properties (client, timeLogs, attachments) 
+  // and explicitly cast priority to satisfy TypeScript's Record indexing
+  const ticket = bundleQ.data as any;
+  const client = ticket.client || null;
+  const timeLogs = ticket.timeLogs || [];
+  const attachments = ticket.attachments || [];
+
   const sla = slaState(ticket);
-  const policy = SLA[ticket.priority];
+  // ✅ FIXED: Explicitly cast ticket.priority to TicketPriority
+  const policy = SLA[ticket.priority as TicketPriority];
+  
   const slaToneCls = sla.tone === "red" ? "border-rose-300 bg-rose-50" : sla.tone === "amber" ? "border-amber-300 bg-amber-50" : "border-emerald-300 bg-emerald-50";
   const slaTextCls = sla.tone === "red" ? "text-rose-800" : sla.tone === "amber" ? "text-amber-800" : "text-emerald-800";
 
@@ -108,8 +115,8 @@ export default function TicketDetailPage() {
             </div>
             <h1 className="mt-1.5 font-display text-[24px] font-extrabold leading-tight tracking-tight">{ticket.subject}</h1>
             <p className="mt-1 text-[13px] text-mute">
-              <Link to={`/clients/${ticket.clientId}`} className="font-bold text-brand-800 hover:underline">{client?.companyName ?? ticket.clientName}</Link>
-              {" "}· opened {timeAgo(ticket.createdAt)} ({fmtDateTime(ticket.createdAt)}) · assigned to <strong className="text-ink">{ticket.assigneeName}</strong>
+              <Link to={`/clients/${ticket.clientId}`} className="font-bold text-brand-800 hover:underline">{client?.companyName ?? "Unknown Client"}</Link>
+              {" "}· opened {timeAgo(ticket.createdAt)} ({fmtDateTime(ticket.createdAt)}) · assigned to <strong className="text-ink">{ticket.assignedTo?.name || "Unassigned"}</strong>
               {ticket.resolvedAt && <> · resolved {fmtDateTime(ticket.resolvedAt)}</>}
             </p>
           </div>
@@ -152,7 +159,7 @@ export default function TicketDetailPage() {
           </Card>
 
           {/* Time tracking */}
-          <Card title="Time tracking" sub={`${fmtMinutes(ticket.minutesTotal)} logged in total · SRS F.4 resource utilization`} className="animate-fade-up" pad={false}>
+          <Card title="Time tracking" sub={`${fmtMinutes(ticket.minutesTotal || 0)} logged in total · SRS F.4 resource utilization`} className="animate-fade-up" pad={false}>
             {manage && (
               <div className="flex flex-wrap items-end gap-2.5 border-b border-line/70 bg-paper/50 px-5 py-4">
                 <label className="block">
@@ -177,10 +184,10 @@ export default function TicketDetailPage() {
             ) : (
               <Table minWidth="min-w-[520px]"
                 head={<><Th>When</Th><Th>Engineer</Th><Th className="text-right">Duration</Th><Th>Note</Th></>}>
-                {timeLogs.map((tl) => (
+                {timeLogs.map((tl: any) => (
                   <tr key={tl.id} className="transition-colors hover:bg-brand-50/40">
                     <Td className="text-mute">{fmtDateTime(tl.createdAt)}</Td>
-                    <Td className="font-semibold">{tl.userName}</Td>
+                    <Td className="font-semibold">{tl.userName || tl.user?.name || "Unknown"}</Td>
                     <Td className="text-right">
                       <span className="tnum inline-flex items-center gap-1.5 font-mono font-bold text-brand-800">
                         <IconClock width={13} height={13} /> {fmtMinutes(tl.minutes)}
@@ -213,14 +220,14 @@ export default function TicketDetailPage() {
               <p className="px-5 py-6 text-center text-[13px] text-mute">No files attached.</p>
             ) : (
               <ul className="divide-y divide-line/60">
-                {attachments.map((a) => (
+                {attachments.map((a: any) => (
                   <li key={a.id} className="flex items-center gap-3 px-5 py-3">
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600/10 text-brand-700">
                       <IconPaperclip width={15} height={15} />
                     </span>
                     <div className="min-w-0">
                       <p className="truncate font-mono text-[12.5px] font-bold">{a.name}</p>
-                      <p className="text-[11.5px] text-mute">{(a.size / 1024).toFixed(1)} KB · {a.uploadedByName} · {timeAgo(a.createdAt)}</p>
+                      <p className="text-[11.5px] text-mute">{(a.size / 1024).toFixed(1)} KB · {a.uploadedByName || a.uploadedBy} · {timeAgo(a.createdAt)}</p>
                     </div>
                   </li>
                 ))}
@@ -232,8 +239,8 @@ export default function TicketDetailPage() {
             {client ? (
               <>
                 <Link to={`/clients/${client.id}`} className="font-display text-[16px] font-bold hover:text-brand-800">{client.companyName}</Link>
-                <p className="mt-1 text-[12.5px] text-mute">{client.industryType} · Owner {client.ownerName}</p>
-                <p className="mt-0.5 text-[12.5px] text-mute">{client.licensesCount} licenses · {client.contactsCount} contacts</p>
+                <p className="mt-1 text-[12.5px] text-mute">{client.industryType || "Unknown"} · Owner {client.ownerName || "Unassigned"}</p>
+                <p className="mt-0.5 text-[12.5px] text-mute">{client.licensesCount || 0} licenses · {client.contactsCount || 0} contacts</p>
               </>
             ) : (
               <p className="text-[13px] text-mute">Client record unavailable.</p>

@@ -13,7 +13,7 @@ export interface User {
 
 // Module A — Leads
 export type LeadStage = "New" | "Contacted" | "Proposal" | "Negotiation" | "Won" | "Lost";
-export type LostReason = "Price" | "Competitor" | "Timing" | "No Budget" | "Other";
+export type LostReason = "Price" | "Competitor" | "Timing" | "NoBudget" | "Other"; // ✅ No space to match Prisma
 
 export interface Lead {
   id: string;
@@ -238,11 +238,20 @@ export interface ListResponse<T> {
   limit: number;
 }
 
-// ── Option constants ────────────────────────────────────────────────────
+// ─ Option constants ────────────────────────────────────────────────────
 export const ROLES: Role[] = ["Admin", "Finance", "Support", "Sales"];
 export const STAGES: LeadStage[] = ["New", "Contacted", "Proposal", "Negotiation", "Won", "Lost"];
 export const SOURCES = ["Website", "Referral", "Cold Call", "Trade Show", "LinkedIn", "Partner"];
-export const LOST_REASONS: LostReason[] = ["Price", "Competitor", "Timing", "No Budget", "Other"];
+
+// ✅ FIXED: Changed to object array with value/label structure
+export const LOST_REASONS: { value: LostReason; label: string }[] = [
+  { value: "Price", label: "Price" },
+  { value: "Competitor", label: "Competitor" },
+  { value: "Timing", label: "Timing" },
+  { value: "NoBudget", label: "No Budget" }, // ✅ Backend expects "NoBudget", UI shows "No Budget"
+  { value: "Other", label: "Other" },
+];
+
 export const CLIENT_STATUSES: ClientStatus[] = ["Prospect", "Active", "OnHold", "Churned"];
 export const INDUSTRIES = [
   "Logistics", "Financial Services", "Manufacturing", "Healthcare", "Retail",

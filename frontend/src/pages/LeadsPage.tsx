@@ -18,7 +18,6 @@ import { IconArrowRight, IconPencil, IconPlus, IconSearch, IconX } from "../comp
 
 const LIMIT = 10;
 
-// ✅ 100% type-safe generic helper to extract arrays from useQuery responses.
 const getArr = <T,>(d: unknown): T[] => {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -73,7 +72,7 @@ function LeadFormModal({ open, onClose, lead }: { open: boolean; onClose: () => 
   }, [open, lead, reset]);
 
   const mutation = useMutation({
-    mutationFn: (form: LeadForm) => lead && lead.id ? api.put(`/leads/${lead.id}`, form) : api.post("/leads", form),
+    mutationFn: (form: LeadForm) => lead && lead.id ? api.patch(`/leads/${lead.id}`, form) : api.post("/leads", form),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["leads"] });
       void qc.invalidateQueries({ queryKey: ["dash"] });
@@ -234,8 +233,11 @@ function LostModal({ open, onClose, lead }: { open: boolean; onClose: () => void
   const mutation = useMutation({
     mutationFn: () => lead && lead.id ? api.post(`/leads/${lead.id}/lost`, { lostReason: reason }) : Promise.reject(new Error("No lead")),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["leads", "dash"] });
-      toast.push("info", "Lead marked as lost", `${lead?.companyName} — ${reason}`);
+      void qc.invalidateQueries({ queryKey: ["leads"] });
+      void qc.invalidateQueries({ queryKey: ["dash"] });
+      
+      const reasonLabel = LOST_REASONS.find(r => r.value === reason)?.label || reason;
+      toast.push("info", "Lead marked as lost", `${lead?.companyName} — ${reasonLabel}`);
       onClose();
     },
     onError: (e) => toast.push("error", "Could not mark lost", apiErrorMsg(e)),
@@ -253,11 +255,11 @@ function LostModal({ open, onClose, lead }: { open: boolean; onClose: () => void
       </>}>
       <div className="grid grid-cols-2 gap-2">
         {LOST_REASONS.map((r) => (
-          <button key={r} type="button" onClick={() => setReason(r)}
+          <button key={r.value} type="button" onClick={() => setReason(r.value)}
             className={`rounded-lg border px-3 py-2.5 text-left text-[13.5px] font-semibold transition-all duration-150 active:scale-[0.98] ${
-              reason === r ? "border-rose-500 bg-rose-600/10 text-rose-800 ring-2 ring-rose-200" : "border-line bg-card text-ink hover:border-rose-300"
+              reason === r.value ? "border-rose-500 bg-rose-600/10 text-rose-800 ring-2 ring-rose-200" : "border-line bg-card text-ink hover:border-rose-300"
             }`}>
-            {r}
+            {r.label}
           </button>
         ))}
       </div>
@@ -318,7 +320,7 @@ export default function LeadsPage() {
           <Table head={<><Th>Company</Th><Th>Contact</Th><Th>Source</Th><Th className="text-right">Est. value</Th><Th>Stage</Th><Th>Created</Th>{manage && <Th className="text-right">Actions</Th>}</>}>
             {getArr<Lead>(leadsQ.data).map((lead) => (
               <tr key={lead.id} className="group transition-colors hover:bg-brand-50/40">
-                <Td><p className="font-bold">{lead.companyName}</p>{lead.lostReason && <p className="text-[11.5px] text-mute">Lost: {lead.lostReason}</p>}</Td>
+                <Td><p className="font-bold">{lead.companyName}</p>{lead.lostReason && <p className="text-[11.5px] text-mute">Lost: {LOST_REASONS.find(r => r.value === lead.lostReason)?.label || lead.lostReason}</p>}</Td>
                 <Td><p className="font-medium">{lead.contactName}</p><p className="text-[12px] text-mute">{lead.email}</p></Td>
                 <Td><Badge tone="slate">{lead.source}</Badge></Td>
                 <Td className="text-right"><span className="tnum font-mono font-semibold">{fmtMoney0(lead.estimatedValue)}</span></Td>

@@ -36,7 +36,7 @@ const invoiceSchema = z.object({
 });
 type InvoiceForm = z.infer<typeof invoiceSchema>;
 
-function InvoiceFormModal({ open, onClose, invoice, presetClientId }: { open: boolean; onClose: () => void; invoice: InvoiceRow | null; presetClientId?: string }) {
+function InvoiceFormModal({ open, onClose, invoice, presetClientId }: { open: boolean; onClose: () => void; invoice: any; presetClientId?: string }) {
   const toast = useToast();
   const qc = useQueryClient();
   const clientsQ = useClientsOptions();
@@ -47,7 +47,19 @@ function InvoiceFormModal({ open, onClose, invoice, presetClientId }: { open: bo
   useEffect(() => {
     if (!open) return;
     if (invoice) {
-      reset({ clientId: invoice.clientId, issueDate: invoice.issueDate.slice(0, 10), dueDate: invoice.dueDate.slice(0, 10), status: invoice.status === "Draft" ? "Draft" : "Sent", taxRatePct: invoice.taxRatePct, items: invoice.items.length > 0 ? invoice.items.map((it) => ({ description: it.description, qty: it.qty, unitPrice: it.unitPrice })) : [{ description: "Professional services", qty: 1, unitPrice: invoice.subtotal }] });
+      // ✅ FIXED: Safely handle missing or undefined items array from the list view
+      const safeItems = Array.isArray(invoice.items) && invoice.items.length > 0 
+        ? invoice.items.map((it: any) => ({ description: it.description, qty: it.qty, unitPrice: it.unitPrice }))
+        : [{ description: "Professional services", qty: 1, unitPrice: invoice.subtotal || 0 }];
+
+      reset({ 
+        clientId: invoice.clientId, 
+        issueDate: invoice.issueDate ? String(invoice.issueDate).slice(0, 10) : "", 
+        dueDate: invoice.dueDate ? String(invoice.dueDate).slice(0, 10) : "", 
+        status: invoice.status === "Draft" ? "Draft" : "Sent", 
+        taxRatePct: invoice.taxRatePct, 
+        items: safeItems 
+      });
     } else {
       const d = new Date();
       const due = new Date(Date.now() + 30 * 86_400_000);
@@ -197,7 +209,6 @@ export default function InvoicesPage() {
           <Table minWidth="min-w-[1060px]" head={<><Th>Invoice</Th><Th>Client</Th><Th>Issued</Th><Th>Due</Th><Th className="text-right">Subtotal</Th><Th className="text-right">Tax</Th><Th className="text-right">Total</Th><Th className="text-right">Paid</Th><Th className="text-right">Balance</Th><Th>Status</Th><Th className="text-right">Actions</Th></>}>
             {rows.map((i) => (
               <tr key={i.id} className="group cursor-pointer transition-colors hover:bg-brand-50/40" onClick={() => navigate(`/invoices/${i.id}`)}>
-                {/* ✅ FIXED: Changed i.number to i.invoiceNumber */}
                 <Td className="font-mono font-bold group-hover:text-brand-800">{i.invoiceNumber}</Td>
                 <Td className="font-medium">{i.clientName}</Td>
                 <Td className="text-mute">{fmtDate(i.issueDate)}</Td>
