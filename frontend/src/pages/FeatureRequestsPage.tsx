@@ -49,6 +49,13 @@ function FRFormModal({ open, onClose, fr }: { open: boolean; onClose: () => void
   const qc = useQueryClient();
   const clientsQ = useClientsOptions();
   const productsQ = useProductsQuery();
+  
+  // ✅ FIX: Safely extract arrays to prevent ".map is not a function" errors
+  const clientsData: any = clientsQ.data;
+  const productsData: any = productsQ.data;
+  const safeClients = Array.isArray(clientsData) ? clientsData : (clientsData?.data || []);
+  const safeProducts = Array.isArray(productsData) ? productsData : (productsData?.data || []);
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FRForm>({
     resolver: zodResolver(frSchema),
   });
@@ -102,13 +109,13 @@ function FRFormModal({ open, onClose, fr }: { open: boolean; onClose: () => void
         <Field label="Client" required error={errors.clientId?.message}>
           <Select error={!!errors.clientId} {...register("clientId")}>
             <option value="">Select client…</option>
-            {(clientsQ.data || []).map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+            {safeClients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
           </Select>
         </Field>
         <Field label="Related Product">
           <Select {...register("productId")}>
             <option value="">None / General</option>
-            {(productsQ.data || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {safeProducts.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
         </Field>
         <div className="col-span-2">
