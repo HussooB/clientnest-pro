@@ -38,24 +38,58 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const role = user?.role ?? "Admin";
 
-  const qHosting = useQuery({ queryKey: ["dash", "overdue-hosting"], queryFn: async () => (await api.get<OverdueHostingRow[]>("/reports/overdue-hosting")).data });
+  // ✅ Always fetch these queries (available to all roles)
   const qLicExp = useQuery({ queryKey: ["dash", "licenses-expiring"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { expiringWithin: 30, limit: 100 } })).data.data });
   const qLicAll = useQuery({ queryKey: ["dash", "licenses-all"], queryFn: async () => (await api.get<ListResponse<LicenseRow>>("/licenses", { params: { limit: 200 } })).data.data });
   const qTkOpen = useQuery({ queryKey: ["dash", "tickets-open"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "Open", limit: 100 } })).data.data });
+  
+  // ✅ FIX: Use "InProgress" (no space) to match the Prisma enum exactly
   const qTkProg = useQuery({ queryKey: ["dash", "tickets-progress"], queryFn: async () => (await api.get<ListResponse<TicketRow>>("/tickets", { params: { status: "InProgress", limit: 100 } })).data.data });
+  
   const qClients = useQuery({ queryKey: ["dash", "clients"], queryFn: async () => (await api.get<ListResponse<ClientRow>>("/clients", { params: { limit: 100 } })).data.data });
-  const qLeads = useQuery({ queryKey: ["dash", "leads"], queryFn: async () => (await api.get<ListResponse<Lead>>("/leads", { params: { limit: 100 } })).data.data });
-  const qInvOverdue = useQuery({ queryKey: ["dash", "invoices-overdue"], queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { status: "Overdue", limit: 100 } })).data.data });
-  const qInvAll = useQuery({ queryKey: ["dash", "invoices-all"], queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { limit: 100 } })).data.data });
+  
+  // ✅ Role-specific queries
+  const qHosting = useQuery({ 
+    queryKey: ["dash", "overdue-hosting"], 
+    queryFn: async () => (await api.get<OverdueHostingRow[]>("/reports/overdue-hosting")).data,
+    enabled: role === "Admin" || role === "Finance"
+  });
+  
+  const qLeads = useQuery({ 
+    queryKey: ["dash", "leads"], 
+    queryFn: async () => (await api.get<ListResponse<Lead>>("/leads", { params: { limit: 100 } })).data.data,
+    enabled: role === "Admin" || role === "Sales"
+  });
+  
+  const qInvOverdue = useQuery({ 
+    queryKey: ["dash", "invoices-overdue"], 
+    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { status: "Overdue", limit: 100 } })).data.data,
+    enabled: role === "Admin" || role === "Finance"
+  });
+  
+  const qInvAll = useQuery({ 
+    queryKey: ["dash", "invoices-all"], 
+    queryFn: async () => (await api.get<ListResponse<InvoiceRow>>("/invoices", { params: { limit: 100 } })).data.data,
+    enabled: role === "Admin" || role === "Finance"
+  });
 
-  const queries = [qHosting, qLicExp, qLicAll, qTkOpen, qTkProg, qClients, qLeads, qInvOverdue, qInvAll];
-  const pending = queries.some((q) => q.isPending);
-  const failed = queries.some((q) => q.isError);
+  // ✅ FIX: Only check queries that are enabled for this role
+  const enabledQueries = [
+    qLicExp, 
+    qLicAll, 
+    qTkOpen, 
+    qTkProg, 
+    qClients,
+    ...(role === "Admin" || role === "Finance" ? [qHosting, qInvOverdue, qInvAll] : []),
+    ...(role === "Admin" || role === "Sales" ? [qLeads] : [])
+  ];
+  
+  const pending = enabledQueries.some((q) => q.isPending);
+  const failed = enabledQueries.some((q) => q.isError);
 
   const view = useMemo(() => {
     if (pending || failed) return null;
 
-    // ✅ 100% TYPE-SAFE: Generic helper that preserves TypeScript types while handling both array and { data: array } responses
     const getArr = <T,>(d: unknown): T[] => {
       if (Array.isArray(d)) return d as T[];
       if (d && typeof d === "object" && "data" in d && Array.isArray((d as Record<string, unknown>).data)) {
@@ -64,14 +98,14 @@ export default function DashboardPage() {
       return [];
     };
 
-    const hosting = getArr<OverdueHostingRow>(qHosting.data);
+    const hosting = (role === "Admin" || role === "Finance") ? getArr<OverdueHostingRow>(qHosting.data) : [];
     const expiring = getArr<LicenseRow>(qLicExp.data);
     const allLicenses = getArr<LicenseRow>(qLicAll.data);
     const openTickets = [...getArr<TicketRow>(qTkOpen.data), ...getArr<TicketRow>(qTkProg.data)];
     const clients = getArr<ClientRow>(qClients.data);
-    const leads = getArr<Lead>(qLeads.data);
-    const overdueInvoices = getArr<InvoiceRow>(qInvOverdue.data);
-    const allInvoices = getArr<InvoiceRow>(qInvAll.data);
+    const leads = (role === "Admin" || role === "Sales") ? getArr<Lead>(qLeads.data) : [];
+    const overdueInvoices = (role === "Admin" || role === "Finance") ? getArr<InvoiceRow>(qInvOverdue.data) : [];
+    const allInvoices = (role === "Admin" || role === "Finance") ? getArr<InvoiceRow>(qInvAll.data) : [];
 
     const activeIds = new Set(clients.filter((c) => c.status === "Active").map((c) => c.id));
     const licenseMrr = allLicenses.filter((l) => l.type !== "Perpetual" && (l.daysToExpiry === null || l.daysToExpiry > 0) && activeIds.has(l.clientId)).reduce((s, l) => s + l.monthlyValue, 0);
@@ -109,9 +143,9 @@ export default function DashboardPage() {
     });
 
     return { hosting, expiring, openTickets, clients, leads, overdueInvoices, mrr: licenseMrr + hostingMrr, hostingMrr, licenseMrr, healthRows, healthCounts, pipeline, pipelineValue, wonValue, overdueTotal, criticalOpen, slaBreached, monthlyPaid };
-  }, [pending, failed, queries, qHosting.data, qLicExp.data, qLicAll.data, qTkOpen.data, qTkProg.data, qClients.data, qLeads.data, qInvOverdue.data, qInvAll.data]);
+  }, [pending, failed, role, qHosting.data, qLicExp.data, qLicAll.data, qTkOpen.data, qTkProg.data, qClients.data, qLeads.data, qInvOverdue.data, qInvAll.data]);
 
-  if (failed) return <ErrorState message="Dashboard metrics could not be loaded." onRetry={() => queries.forEach((q) => q.refetch())} />;
+  if (failed) return <ErrorState message="Dashboard metrics could not be loaded." onRetry={() => enabledQueries.forEach((q) => q.refetch())} />;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -144,7 +178,7 @@ export default function DashboardPage() {
             {(role === "Finance" || role === "Admin") && (<KpiCard label="Overdue receivables" value={fmtMoney0(view.overdueTotal)} sub={<>{view.overdueInvoices.length} invoice{view.overdueInvoices.length === 1 ? "" : "s"} past due · <Link to="/invoices?status=Overdue" className="font-bold text-rose-700 underline decoration-rose-300 underline-offset-2 hover:text-rose-900">review</Link></>} accent="bg-rose-600" delay={60} />)}
             {(role === "Sales" || role === "Admin") && (<KpiCard label="Open pipeline" value={fmtMoney0(view.pipelineValue)} sub={<>{view.pipeline.reduce((s, p) => s + p.count, 0)} opportunities in play · {fmtMoney0(view.wonValue)} won</>} accent="bg-orange-500" delay={60} />)}
             {(role === "Support" || role === "Admin") && (<KpiCard label="Open tickets" value={String(view.openTickets.length)} sub={<>{view.criticalOpen} critical · <span className={view.slaBreached > 0 ? "font-bold text-rose-700" : ""}>{view.slaBreached} breaching SLA</span></>} accent="bg-sky-600" delay={60} />)}
-            <KpiCard label="Overdue hosting fees" value={String(view.hosting.length)} sub={view.hosting.length > 0 ? <>{fmtMoney0(view.hosting.reduce((s, h) => s + h.amount, 0))} uncollected · oldest {view.hosting[0].daysOverdue}d</> : <>All hosting cycles current</>} accent="bg-amber-500" delay={120} />
+            {(role === "Finance" || role === "Admin") && <KpiCard label="Overdue hosting fees" value={String(view.hosting.length)} sub={view.hosting.length > 0 ? <>{fmtMoney0(view.hosting.reduce((s, h) => s + h.amount, 0))} uncollected · oldest {view.hosting[0].daysOverdue}d</> : <>All hosting cycles current</>} accent="bg-amber-500" delay={120} />}
             <KpiCard label="Healthy clients" value={`${view.healthCounts.green}/${view.healthRows.length}`} sub={<span className="flex items-center gap-2.5"><span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-600" />{view.healthCounts.green}</span><span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" />{view.healthCounts.amber}</span><span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-600" />{view.healthCounts.red}</span></span>} accent="bg-emerald-600" delay={180} />
           </div>
 
@@ -213,7 +247,7 @@ export default function DashboardPage() {
                 <ul className="divide-y divide-line/60">
                   {view.overdueInvoices.slice(0, 6).map((i) => (
                     <li key={i.id}><Link to={`/invoices/${i.id}`} className="flex items-center justify-between gap-3 px-5 py-2.5 transition-colors hover:bg-paper">
-                      <div className="min-w-0"><p className="font-mono text-[13px] font-bold">{i.number}</p><p className="truncate text-[12px] text-mute">{i.clientName}</p></div>
+                      <div className="min-w-0"><p className="font-mono text-[13px] font-bold">{i.invoiceNumber || i.number}</p><p className="truncate text-[12px] text-mute">{i.clientName}</p></div>
                       <div className="text-right"><p className="tnum font-mono text-[13.5px] font-bold text-rose-700">{fmtMoney(i.balance)}</p><p className="text-[11.5px] font-semibold text-rose-600/80">{daysOverdue(i.dueDate)}d overdue</p></div>
                     </Link></li>
                   ))}
@@ -223,38 +257,40 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card title="Overdue hosting fees" sub="GET /reports/overdue-hosting · recurring fees past their billing cycle" className="lg:col-span-2 animate-fade-up" pad={false}>
-              <ul className="divide-y divide-line/60">
-                {view.hosting.slice(0, 5).map((h) => (
-                  <li key={h.clientId} className="flex items-center justify-between gap-3 px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/12 text-amber-700"><IconPulse width={16} height={16} /></span>
-                      <div><Link to={`/clients/${h.clientId}`} className="text-[13.5px] font-bold hover:text-brand-800">{h.companyName}</Link><p className="text-[12px] text-mute">{h.cycle} cycle · {h.daysOverdue} days past due</p></div>
-                    </div>
-                    <span className="tnum font-mono text-[14px] font-bold">{fmtMoney(h.amount)}</span>
-                  </li>
-                ))}
-                {view.hosting.length === 0 && <li className="px-5 py-8 text-center text-[13px] text-mute">All hosting fees are inside their billing cycle.</li>}
-              </ul>
-            </Card>
+          {(role === "Admin" || role === "Finance") && (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card title="Overdue hosting fees" sub="GET /reports/overdue-hosting · recurring fees past their billing cycle" className="lg:col-span-2 animate-fade-up" pad={false}>
+                <ul className="divide-y divide-line/60">
+                  {view.hosting.slice(0, 5).map((h) => (
+                    <li key={h.clientId} className="flex items-center justify-between gap-3 px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/12 text-amber-700"><IconPulse width={16} height={16} /></span>
+                        <div><Link to={`/clients/${h.clientId}`} className="text-[13.5px] font-bold hover:text-brand-800">{h.companyName}</Link><p className="text-[12px] text-mute">{h.cycle} cycle · {h.daysOverdue} days past due</p></div>
+                      </div>
+                      <span className="tnum font-mono text-[14px] font-bold">{fmtMoney(h.amount)}</span>
+                    </li>
+                  ))}
+                  {view.hosting.length === 0 && <li className="px-5 py-8 text-center text-[13px] text-mute">All hosting fees are inside their billing cycle.</li>}
+                </ul>
+              </Card>
 
-            <Card title="Pipeline snapshot" sub="Open opportunities · closed value" className="animate-fade-up" pad={false}>
-              <div className="space-y-3 p-5">
-                {view.pipeline.map((p) => (
-                  <div key={p.stage} className="flex items-center gap-3">
-                    <Badge tone={stageTone(p.stage)} className="w-[108px] justify-center">{p.stage}</Badge>
-                    <Bar pct={(p.value / Math.max(1, view.pipelineValue)) * 100} tone={stageTone(p.stage)} className="flex-1" />
-                    <span className="tnum w-[82px] text-right font-mono text-[12.5px] font-semibold">{fmtMoney0(p.value)}</span>
+              <Card title="Pipeline snapshot" sub="Open opportunities · closed value" className="animate-fade-up" pad={false}>
+                <div className="space-y-3 p-5">
+                  {view.pipeline.map((p) => (
+                    <div key={p.stage} className="flex items-center gap-3">
+                      <Badge tone={stageTone(p.stage)} className="w-[108px] justify-center">{p.stage}</Badge>
+                      <Bar pct={(p.value / Math.max(1, view.pipelineValue)) * 100} tone={stageTone(p.stage)} className="flex-1" />
+                      <span className="tnum w-[82px] text-right font-mono text-[12.5px] font-semibold">{fmtMoney0(p.value)}</span>
+                    </div>
+                  ))}
+                  <div className="mt-1 flex items-center justify-between border-t border-line/70 pt-3 text-[13px]">
+                    <span className="font-bold text-mute">Won (closed)</span>
+                    <span className="tnum font-mono font-bold text-emerald-700">{fmtMoney0(view.wonValue)}</span>
                   </div>
-                ))}
-                <div className="mt-1 flex items-center justify-between border-t border-line/70 pt-3 text-[13px]">
-                  <span className="font-bold text-mute">Won (closed)</span>
-                  <span className="tnum font-mono font-bold text-emerald-700">{fmtMoney0(view.wonValue)}</span>
                 </div>
-              </div>
-            </Card>
-          </div>
+              </Card>
+            </div>
+          )}
         </>
       )}
     </div>

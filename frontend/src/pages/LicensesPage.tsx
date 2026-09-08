@@ -115,7 +115,7 @@ function LicenseFormModal({ open, onClose, license, presetClientId }: { open: bo
 export default function LicensesPage() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const manage = can(user?.role, "licenses.manage");
+  const manage = user?.role === "Admin" || user?.role === "Sales";
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [expiring, setExpiring] = useState(params.get("expiring") ?? "");
