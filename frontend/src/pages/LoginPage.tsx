@@ -46,8 +46,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.08fr_1fr]">
-      {/* ── Brand panel ── */}
+    <div className="flex min-h-screen w-full flex-col lg:grid lg:grid-cols-[1.08fr_1fr]">
+      {/* ── Brand panel (Desktop only) ── */}
       <div className="login-texture relative hidden flex-col justify-between overflow-hidden bg-petrol-950 p-10 text-paper lg:flex">
         <div className="flex items-center gap-3">
           <LogoMark size={40} />
@@ -85,16 +85,21 @@ export default function LoginPage() {
       </div>
 
       {/* ── Form panel ── */}
-      <div className="flex items-center justify-center bg-paper px-6 py-12">
+      <div className="flex w-full flex-1 items-center justify-center bg-paper px-4 py-8 sm:px-6 sm:py-12 lg:p-12">
         <div className="w-full max-w-[400px] animate-fade-up">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <LogoMark size={38} />
-            <p className="font-display text-lg font-extrabold tracking-tight">
-              ClientNest <span className="text-brand-700">Pro</span>
-            </p>
+          
+          {/* Mobile Logo & Branding */}
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <LogoMark size={36} />
+            <div className="leading-none">
+              <p className="font-display text-xl font-extrabold tracking-tight">
+                ClientNest <span className="text-brand-700">Pro</span>
+              </p>
+              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-mute">CRM &amp; Fee Mgmt</p>
+            </div>
           </div>
 
-          <h2 className="font-display text-[26px] font-extrabold tracking-tight">Sign in to your workspace</h2>
+          <h2 className="font-display text-2xl font-extrabold tracking-tight sm:text-[26px]">Sign in to your workspace</h2>
           <p className="mt-1.5 text-sm text-mute">Role-based access · every action is audit-logged.</p>
 
           <form
@@ -105,15 +110,30 @@ export default function LoginPage() {
             }}
           >
             <Field label="Email" required>
-              <TextInput type="email" required autoComplete="username" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <TextInput 
+                type="email" 
+                required 
+                autoComplete="username" 
+                placeholder="you@company.com" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+              />
             </Field>
             <Field label="Password" required>
-              <TextInput type="password" required autoComplete="current-password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <TextInput 
+                type="password" 
+                required 
+                autoComplete="current-password" 
+                placeholder="••••••••" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+              />
             </Field>
 
             {error && (
-              <div className="flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2.5 text-[13px] font-semibold text-rose-800 animate-pop">
-                <IconAlert width={15} height={15} /> {error}
+              <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2.5 text-[13px] font-semibold text-rose-800 animate-pop">
+                <IconAlert width={15} height={15} className="mt-0.5 shrink-0" /> 
+                <span>{error}</span>
               </div>
             )}
 
@@ -123,8 +143,11 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-8">
-            <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-mute">Explore with a demo role · password <span className="font-mono normal-case tracking-normal">nest2025</span></p>
-            <div className="grid grid-cols-2 gap-2">
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-mute">
+              Explore with a demo role · password <span className="font-mono normal-case tracking-normal text-ink">nest2025</span>
+            </p>
+            {/* Stacks on very small phones, side-by-side on larger phones/tablets */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {DEMO_ACCOUNTS.map((acc) => (
                 <button
                   key={acc.role}
@@ -133,10 +156,10 @@ export default function LoginPage() {
                     setPassword("nest2025");
                     void doLogin(acc.email, "nest2025", acc.role);
                   }}
-                  className={`rounded-lg border bg-petrol-900 px-3 py-2.5 text-left transition-all duration-150 active:scale-[0.98] ${acc.tone}`}
+                  className={`rounded-lg border bg-petrol-900 px-3 py-3 text-left transition-all duration-150 active:scale-[0.98] ${acc.tone}`}
                 >
                   <span className="block font-display text-[13.5px] font-bold">{busy === acc.role ? "Signing in…" : acc.role}</span>
-                  <span className="block truncate font-mono text-[10.5px] text-paper/45">{acc.email}</span>
+                  <span className="mt-0.5 block truncate font-mono text-[10.5px] text-paper/45">{acc.email}</span>
                 </button>
               ))}
             </div>
