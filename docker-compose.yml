@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    container_name: clientnest-backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env  # ✅ Points to your backend/.env file
+    volumes:
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - clientnest-network
+
+  frontend:
+    build: ./frontend
+    container_name: clientnest-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - clientnest-network
+
+networks:
+  clientnest-network:
+    driver: bridge

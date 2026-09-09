@@ -6,7 +6,7 @@ import { initials } from "../lib/utils";
 import type { Role } from "../types";
 import {
   IconBuilding, IconCard, IconFunnel, IconGrid, IconInvoice, IconKey, IconLayers, IconLifebuoy,
-  IconLogout, IconScroll, LogoMark,
+  IconLogout, IconMenu, IconScroll, IconX, LogoMark,
 } from "./icons";
 import { Badge, roleTone } from "./ui";
 
@@ -44,7 +44,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
       { to: "/contracts", label: "Contracts", icon: (p) => <IconScroll {...p} />, roles: ["Admin"] },
     ],
   },
-    {
+  {
     label: "Product",
     items: [
       { to: "/feature-requests", label: "Feature Requests", icon: (p) => <IconLayers {...p} />, roles: ["Admin", "Sales", "Support", "Finance"] },
@@ -131,22 +131,57 @@ export function PageHeader({ title, desc, actions }: { title: string; desc?: str
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const title = TITLES.find(([re]) => re.test(location.pathname))?.[1] ?? "ClientNest Pro";
   const visible = (item: NavItem) => !item.roles || (user?.role && item.roles.includes(user.role));
 
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* ── Sidebar ─ */}
-      <aside className="sidebar-texture flex w-[228px] shrink-0 flex-col border-r border-petrol-700/60 bg-petrol-900 text-paper">
-        <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
-          <LogoMark size={34} />
-          <div className="leading-none">
-            <p className="font-display text-[17px] font-extrabold tracking-tight">
-              ClientNest <span className="text-gold-400">Pro</span>
-            </p>
-            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-paper/45">CRM · Fee Mgmt</p>
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-petrol-950/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar ── */}
+      <aside 
+        className={`sidebar-texture fixed inset-y-0 left-0 z-50 flex w-[228px] shrink-0 flex-col border-r border-petrol-700/60 bg-petrol-900 text-paper transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2.5 px-5 pb-5 pt-6">
+          <div className="flex items-center gap-2.5">
+            <LogoMark size={34} />
+            <div className="leading-none">
+              <p className="font-display text-[17px] font-extrabold tracking-tight">
+                ClientNest <span className="text-gold-400">Pro</span>
+              </p>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-paper/45">CRM · Fee Mgmt</p>
+            </div>
           </div>
+          <button 
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden rounded-md p-1.5 text-paper/50 transition-colors hover:bg-petrol-800 hover:text-paper"
+          >
+            <IconX width={18} height={18} />
+          </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
@@ -202,13 +237,22 @@ export default function Layout() {
         )}
       </aside>
 
-      {/* ── Main ── */}
+      {/* ── Main ─ */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-[54px] shrink-0 items-center justify-between gap-4 border-b border-line bg-card/80 px-6 backdrop-blur">
-          <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-mute">
-            ClientNest Pro <span className="mx-1.5 text-line">/</span>
-            <span className="text-brand-800">{title}</span>
-          </p>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden rounded-md p-1.5 text-mute transition-colors hover:bg-ink/5 hover:text-ink"
+              aria-label="Open menu"
+            >
+              <IconMenu width={20} height={20} />
+            </button>
+            <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-mute">
+              ClientNest Pro <span className="mx-1.5 text-line">/</span>
+              <span className="text-brand-800">{title}</span>
+            </p>
+          </div>
           <div className="flex items-center gap-3">
             <span className="hidden text-[12.5px] font-medium text-mute sm:block">
               {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}

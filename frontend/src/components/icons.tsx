@@ -203,3 +203,10 @@ export const IconUpload = (p: P) => (
     <line x1="12" y1="3" x2="12" y2="15" />
   </svg>
 );
+
+export const IconMenu = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3 6h18M3 12h18M3 18h18" />
+  </svg>
+);
+
