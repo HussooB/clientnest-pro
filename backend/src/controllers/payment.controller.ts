@@ -29,20 +29,45 @@ async function computeInvoiceBalance(invoiceId: string): Promise<{
 }
 
 export async function listPayments(req: Request, res: Response): Promise<void> {
-  const { invoiceId } = req.query as { invoiceId?: string };
+  const { clientId, category, from, to } = req.query as { 
+    clientId?: string; 
+    category?: string;
+    from?: string;
+    to?: string;
+  };
 
-  const where: { invoiceId?: string } = {};
-  if (invoiceId) {
-    where.invoiceId = invoiceId;
+  const where: any = {};
+  
+  if (category) {
+    where.category = category;
+  }
+  
+  if (from || to) {
+    where.paymentDate = {};
+    if (from) where.paymentDate.gte = new Date(from);
+    if (to) {
+      const endDate = new Date(to);
+      endDate.setDate(endDate.getDate() + 1); // Include the entire 'to' day
+      where.paymentDate.lte = endDate;
+    }
+  }
+
+  if (clientId) {
+    where.invoice = { clientId };
   }
 
   const payments = await prisma.payment.findMany({
     where,
     include: {
       invoice: {
-        include: { client: true },
+        select: {
+          invoiceNumber: true,
+          client: { select: { companyName: true } }
+        }
       },
-      createdBy: true,
+      createdBy: {
+        select: { name: true }
+      }
     },
     orderBy: { paymentDate: "desc" },
   });

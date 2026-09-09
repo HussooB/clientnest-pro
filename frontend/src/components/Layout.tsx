@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { initials } from "../lib/utils";
 import type { Role } from "../types";
 import {
-  IconBuilding, IconFunnel, IconGrid, IconInvoice, IconKey, IconLayers, IconLifebuoy,
+  IconBuilding, IconCard, IconFunnel, IconGrid, IconInvoice, IconKey, IconLayers, IconLifebuoy,
   IconLogout, IconScroll, LogoMark,
 } from "./icons";
 import { Badge, roleTone } from "./ui";
@@ -47,7 +47,13 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     {
     label: "Product",
     items: [
-      { to: "/feature-requests", label: "Feature Requests", icon: (p) => <IconLayers {...p} />, roles: ["Admin", "Sales", "Support"] },
+      { to: "/feature-requests", label: "Feature Requests", icon: (p) => <IconLayers {...p} />, roles: ["Admin", "Sales", "Support", "Finance"] },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { to: "/payments", label: "Payments", icon: (p) => <IconCard {...p} />, roles: ["Admin", "Finance", "Sales"] },
     ],
   },
   {
